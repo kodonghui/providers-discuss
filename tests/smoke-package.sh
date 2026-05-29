@@ -23,9 +23,13 @@ install_home="${tmp}/install-home"
 "${pkg}/install.sh" --prefix "${install_home}/.local" --codex-home "${install_home}/.codex" >/dev/null
 "${install_home}/.local/bin/providers-discuss" --help >/dev/null
 test -f "${install_home}/.codex/skills/providers-discuss/SKILL.md"
+test -f "${install_home}/.codex/skills/kdh-providers-discuss/SKILL.md"
+grep -q "name: providers-discuss" "${install_home}/.codex/skills/providers-discuss/SKILL.md"
+grep -q "name: kdh-providers-discuss" "${install_home}/.codex/skills/kdh-providers-discuss/SKILL.md"
 "${pkg}/install.sh" --prefix "${install_home}/.local" --codex-home "${install_home}/.codex" --uninstall >/dev/null
 test ! -e "${install_home}/.local/bin/providers-discuss"
 test ! -e "${install_home}/.codex/skills/providers-discuss"
+test ! -e "${install_home}/.codex/skills/kdh-providers-discuss"
 
 for config in "${pkg}"/examples/*.config.json; do
   "${cmd}" validate-config "${config}" --json >/dev/null

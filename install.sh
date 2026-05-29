@@ -9,9 +9,10 @@ Installs the local providers-discuss command and Codex skill for the current use
 Default prefix: $HOME/.local
 Default Codex home: $CODEX_HOME, or $HOME/.codex when CODEX_HOME is unset
 
-This installer only creates or removes local command and skill links. It does
-not touch provider homes, OAuth files, Claude hooks, browser settings, cron,
-daemons, or global system directories.
+This installer only creates or removes local command and skill links. It
+installs both the public `providers-discuss` skill and the compatibility
+`kdh-providers-discuss` skill. It does not touch provider homes, OAuth files,
+Claude hooks, browser settings, cron, daemons, or global system directories.
 EOF
 }
 
@@ -54,22 +55,66 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 bin_dir="${prefix}/bin"
 target="${bin_dir}/providers-discuss"
 source_cmd="${repo_root}/bin/providers-discuss"
-skill_source="${repo_root}/skills/providers-discuss"
 skill_dir="${codex_home}/skills"
-skill_target="${skill_dir}/providers-discuss"
+skill_names=(providers-discuss kdh-providers-discuss)
+
+check_skill_target() {
+  local name="$1"
+  local source="${repo_root}/skills/${name}"
+  local target="${skill_dir}/${name}"
+
+  if [ ! -f "${source}/SKILL.md" ]; then
+    echo "missing Codex skill source: ${source}/SKILL.md" >&2
+    exit 1
+  fi
+
+  if [ -e "${target}" ] && [ ! -L "${target}" ]; then
+    echo "refusing to overwrite non-symlink Codex skill: ${target}" >&2
+    exit 1
+  fi
+
+  if [ -L "${target}" ]; then
+    local current_skill_target
+    current_skill_target="$(readlink "${target}")"
+    if [ "${current_skill_target}" != "${source}" ]; then
+      echo "refusing to replace Codex skill link ${target} -> ${current_skill_target}" >&2
+      exit 1
+    fi
+  fi
+}
+
+link_skill() {
+  local name="$1"
+  local source="${repo_root}/skills/${name}"
+  local target="${skill_dir}/${name}"
+  ln -sfn "${source}" "${target}"
+  echo "installed ${target}"
+}
+
+remove_skill() {
+  local name="$1"
+  local source="${repo_root}/skills/${name}"
+  local target="${skill_dir}/${name}"
+
+  if [ -L "${target}" ] && [ "$(readlink "${target}")" = "${source}" ]; then
+    rm -f "${target}"
+    echo "removed ${target}"
+  elif [ -e "${target}" ]; then
+    echo "left existing ${target}; it is not this installer's link" >&2
+  fi
+}
 
 if [ "$uninstall" -eq 1 ]; then
   if [ "$dry_run" -eq 1 ]; then
     echo "would remove ${target}"
-    echo "would remove ${skill_target} when it links to ${skill_source}"
+    for skill_name in "${skill_names[@]}"; do
+      echo "would remove ${skill_dir}/${skill_name} when it links to ${repo_root}/skills/${skill_name}"
+    done
   else
     rm -f "${target}"
-    if [ -L "${skill_target}" ] && [ "$(readlink "${skill_target}")" = "${skill_source}" ]; then
-      rm -f "${skill_target}"
-      echo "removed ${skill_target}"
-    elif [ -e "${skill_target}" ]; then
-      echo "left existing ${skill_target}; it is not this installer's link" >&2
-    fi
+    for skill_name in "${skill_names[@]}"; do
+      remove_skill "${skill_name}"
+    done
     echo "removed ${target}"
   fi
   exit 0
@@ -80,37 +125,26 @@ if [ ! -x "${source_cmd}" ]; then
   exit 1
 fi
 
-if [ ! -f "${skill_source}/SKILL.md" ]; then
-  echo "missing Codex skill source: ${skill_source}/SKILL.md" >&2
-  exit 1
-fi
-
-if [ -e "${skill_target}" ] && [ ! -L "${skill_target}" ]; then
-  echo "refusing to overwrite non-symlink Codex skill: ${skill_target}" >&2
-  exit 1
-fi
-
-if [ -L "${skill_target}" ]; then
-  current_skill_target="$(readlink "${skill_target}")"
-  if [ "${current_skill_target}" != "${skill_source}" ]; then
-    echo "refusing to replace Codex skill link ${skill_target} -> ${current_skill_target}" >&2
-    exit 1
-  fi
-fi
+for skill_name in "${skill_names[@]}"; do
+  check_skill_target "${skill_name}"
+done
 
 if [ "$dry_run" -eq 1 ]; then
   echo "would create ${bin_dir}"
   echo "would link ${target} -> ${source_cmd}"
   echo "would create ${skill_dir}"
-  echo "would link ${skill_target} -> ${skill_source}"
+  for skill_name in "${skill_names[@]}"; do
+    echo "would link ${skill_dir}/${skill_name} -> ${repo_root}/skills/${skill_name}"
+  done
   exit 0
 fi
 
 mkdir -p "${bin_dir}"
 ln -sfn "${source_cmd}" "${target}"
 mkdir -p "${skill_dir}"
-ln -sfn "${skill_source}" "${skill_target}"
+for skill_name in "${skill_names[@]}"; do
+  link_skill "${skill_name}"
+done
 echo "installed ${target}"
-echo "installed ${skill_target}"
 echo "Run: ${target} --help"
-echo "Restart Codex to load the providers-discuss skill."
+echo "Restart Codex to load the providers-discuss and kdh-providers-discuss skills."
