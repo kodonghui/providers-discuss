@@ -1,0 +1,60 @@
+{
+  "agent_catalogs": [
+    {
+      "enabled": true,
+      "id": "kdh-mini",
+      "path": "agents/kdh-mini-catalog.json",
+      "required": true,
+      "type": "kdh_agents_catalog"
+    }
+  ],
+  "agent_profile_defaults": {
+    "enabled": true,
+    "preset": "balanced-kdh"
+  },
+  "input": {
+    "package_strategy": "orchestrator_reads_sources_and_builds_input_pack",
+    "source_dirs": ["./inputs"]
+  },
+  "objective": "Profile-aware package smoke discussion.",
+  "orchestrator": {
+    "claim_gate_required": true,
+    "read_prior_rounds": true,
+    "write_prompt_delta_after_each_round": true
+  },
+  "rounds": [
+    {
+      "mode": "explore",
+      "round_id": "R1",
+      "title": "Profile-aware prompt smoke"
+    }
+  ],
+  "schema": "providers-discuss.public-config.v1",
+  "seats": [
+    {
+      "model": "manual",
+      "provider": "manual",
+      "reasoning_effort": "manual",
+      "required": true,
+      "role": "manual profile smoke",
+      "seat_id": "human_reviewer",
+      "timeout_seconds": 2400,
+      "transport": "manual"
+    },
+    {
+      "model": "opus",
+      "provider": "anthropic",
+      "reasoning_effort": "max",
+      "required": true,
+      "role": "team profile smoke",
+      "seat_id": "claude_team",
+      "team_agents": {
+        "enabled": true,
+        "required_direct_message_count": 6,
+        "roles": ["reader", "skeptic", "recorder"]
+      },
+      "timeout_seconds": 2400,
+      "transport": "claude_k_team_agents"
+    }
+  ]
+}

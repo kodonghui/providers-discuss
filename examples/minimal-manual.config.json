@@ -1,0 +1,39 @@
+{
+  "input": {
+    "package_strategy": "local_file_scan",
+    "source_dirs": [
+      "./inputs"
+    ]
+  },
+  "objective": "Use one manual reviewer seat to test the providers-discuss artifact contract.",
+  "orchestrator": {
+    "claim_gate_required": true,
+    "read_prior_rounds": true,
+    "write_prompt_delta_after_each_round": true
+  },
+  "rounds": [
+    {
+      "mode": "explore",
+      "round_id": "R1",
+      "title": "Manual review and first recommendation"
+    },
+    {
+      "mode": "decide",
+      "round_id": "R2",
+      "title": "Decision follow-up"
+    }
+  ],
+  "schema": "providers-discuss.public-config.v1",
+  "seats": [
+    {
+      "model": "human",
+      "provider": "manual",
+      "reasoning_effort": "manual",
+      "required": true,
+      "role": "human reviewer who writes the answer file",
+      "seat_id": "human_reviewer",
+      "timeout_seconds": 2400,
+      "transport": "manual"
+    }
+  ]
+}

@@ -1,0 +1,376 @@
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+from typing import Any, TextIO
+
+from .artifacts import DEFAULT_PROVIDER_TIMEOUT_SECONDS, DEFAULT_TEAM_AGENTS_DIRECT_MESSAGE_COUNT, write_json
+from .agent_profiles import DEFAULT_AGENT_PROFILE_PRESET, load_agent_profiles, profile_compatibility
+from .public_config import example_public_config, validate_public_config
+
+
+CONFIGURE_SCHEMA = "providers-discuss.configure.v1"
+
+
+ROUND_MODE_SEQUENCE = ("explore", "challenge", "synthesize", "verify", "decide")
+ROUND_TITLE_BY_MODE = {
+    "explore": "Independent proposals and risk candidates",
+    "challenge": "Challenge unsupported claims and hidden assumptions",
+    "synthesize": "Synthesize architecture and contract candidates",
+    "verify": "Failure simulation and recovery requirements",
+    "decide": "Decision contract and implementation gate",
+}
+
+DEFAULT_PROVIDER_TRANSPORT = {
+    "openai": "codex_exec_file",
+    "anthropic": "claude_k",
+    "google": "gemini_cli",
+    "manual": "manual",
+    "other": "manual",
+}
+
+DEFAULT_PROVIDER_MODEL = {
+    "openai": "gpt-5.5",
+    "anthropic": "opus",
+    "google": "gemini-latest",
+    "manual": "manual",
+    "other": "custom",
+}
+
+DEFAULT_PROVIDER_REASONING = {
+    "openai": "high",
+    "anthropic": "max",
+    "google": "default",
+    "manual": "manual",
+    "other": "default",
+}
+
+
+def read_answers(path: Path) -> dict[str, Any]:
+    with path.open("r", encoding="utf-8") as fh:
+        data = json.load(fh)
+    if not isinstance(data, dict):
+        raise ValueError("answers JSON root must be an object")
+    return data
+
+
+def write_config(path: Path, config: dict[str, Any]) -> None:
+    write_json(path, config)
+
+
+def configure_from_answers(answers: dict[str, Any]) -> dict[str, Any]:
+    config = example_public_config()
+    config["objective"] = _str_value(answers.get("objective"), config["objective"])
+    input_cfg = dict(config.get("input") or {})
+    input_cfg["source_dirs"] = _list_value(answers.get("source_dirs"), input_cfg.get("source_dirs") or ["./inputs"])
+    if "package_strategy" in answers:
+        input_cfg["package_strategy"] = _str_value(answers.get("package_strategy"), input_cfg.get("package_strategy", ""))
+    config["input"] = input_cfg
+    if "agent_catalogs" in answers or "agent_catalog_paths" in answers:
+        config["agent_catalogs"] = _catalogs_value(answers.get("agent_catalogs"), answers.get("agent_catalog_paths"))
+    if "agent_profile_defaults" in answers:
+        defaults = answers.get("agent_profile_defaults")
+        if not isinstance(defaults, dict):
+            raise ValueError("agent_profile_defaults must be an object")
+        config["agent_profile_defaults"] = dict(defaults)
+    elif "use_agent_profile_defaults" in answers or "agent_profile_preset" in answers:
+        config["agent_profile_defaults"] = {
+            "enabled": _bool_value(answers.get("use_agent_profile_defaults"), False),
+            "preset": _str_value(answers.get("agent_profile_preset"), DEFAULT_AGENT_PROFILE_PRESET),
+        }
+    config["rounds"] = _rounds_from_answers(answers)
+    config["seats"] = [_seat_from_answers(item, index) for index, item in enumerate(_seat_answers(answers), start=1)]
+    return config
+
+
+def configure_interactive(stdin: TextIO = sys.stdin, stdout: TextIO = sys.stdout) -> dict[str, Any]:
+    defaults = example_public_config()
+    answers: dict[str, Any] = {}
+    answers["objective"] = _ask(stdout, stdin, "Objective/topic", defaults["objective"])
+    answers["source_dirs"] = _ask_list(stdout, stdin, "Input/source dirs", defaults["input"]["source_dirs"])
+    answers["round_count"] = _ask_int(stdout, stdin, "Round count", len(defaults["rounds"]))
+    seat_count = _ask_int(stdout, stdin, "Seat count", len([seat for seat in defaults["seats"] if seat.get("enabled", True) is not False]))
+    seats: list[dict[str, Any]] = []
+    default_seats = defaults["seats"]
+    for index in range(seat_count):
+        default = default_seats[index] if index < len(default_seats) else {}
+        stdout.write(f"\nSeat {index + 1}\n")
+        seat: dict[str, Any] = {}
+        seat["seat_id"] = _ask(stdout, stdin, "Seat id", default.get("seat_id") or f"seat_{index + 1}")
+        seat["provider"] = _ask(stdout, stdin, "Provider (openai/anthropic/google/manual/other)", default.get("provider") or "manual")
+        provider = seat["provider"]
+        seat["transport"] = _ask(stdout, stdin, "Transport", default.get("transport") or DEFAULT_PROVIDER_TRANSPORT.get(provider, "manual"))
+        seat["model"] = _ask(stdout, stdin, "Model", default.get("model") or DEFAULT_PROVIDER_MODEL.get(provider, "custom"))
+        seat["reasoning_effort"] = _ask(
+            stdout,
+            stdin,
+            "Reasoning/effort",
+            default.get("reasoning_effort") or DEFAULT_PROVIDER_REASONING.get(provider, "default"),
+        )
+        seat["role"] = _ask(stdout, stdin, "Role", default.get("role") or "independent reviewer")
+        seat["required"] = _ask_bool(stdout, stdin, "Required seat", bool(default.get("required", True)))
+        seat["enabled"] = _ask_bool(stdout, stdin, "Enabled", bool(default.get("enabled", True)))
+        if seat["transport"] == "claude_k_team_agents" or _ask_bool(stdout, stdin, "Use Claude Team Agents", False):
+            team_default = default.get("team_agents") or {}
+            seat["transport"] = "claude_k_team_agents"
+            seat["team_agents"] = {
+                "enabled": True,
+                "roles": _ask_list(stdout, stdin, "Team Agent roles", team_default.get("roles") or ["source-reader", "skeptic", "recorder"]),
+                "required_direct_message_count": _ask_int(
+                    stdout,
+                    stdin,
+                    "Required direct teammate messages",
+                    int(team_default.get("required_direct_message_count", DEFAULT_TEAM_AGENTS_DIRECT_MESSAGE_COUNT)),
+                ),
+            }
+        seats.append(seat)
+    if _ask_bool(stdout, stdin, "Use agent profiles", False):
+        catalog_paths = _ask_list(stdout, stdin, "Agent catalog paths", _default_agent_catalog_paths())
+        catalogs = _catalogs_value(None, catalog_paths)
+        answers["agent_catalogs"] = catalogs
+        use_defaults = _ask_bool(stdout, stdin, f"Use {DEFAULT_AGENT_PROFILE_PRESET} defaults", True)
+        answers["agent_profile_defaults"] = {"enabled": use_defaults, "preset": DEFAULT_AGENT_PROFILE_PRESET}
+        if not use_defaults:
+            _ask_profile_assignments(stdout, stdin, seats, catalogs)
+    answers["seats"] = seats
+    return configure_from_answers(answers)
+
+
+def _rounds_from_answers(answers: dict[str, Any]) -> list[dict[str, str]]:
+    raw_rounds = answers.get("rounds")
+    if isinstance(raw_rounds, list) and raw_rounds:
+        rounds = []
+        for index, item in enumerate(raw_rounds, start=1):
+            if not isinstance(item, dict):
+                raise ValueError(f"round #{index} must be an object")
+            mode = _str_value(item.get("mode"), _mode_for_index(index, len(raw_rounds)))
+            rounds.append(
+                {
+                    "round_id": _str_value(item.get("round_id"), f"R{index}"),
+                    "mode": mode,
+                    "title": _str_value(item.get("title"), ROUND_TITLE_BY_MODE.get(mode, f"Round {index}")),
+                }
+            )
+        return rounds
+    count = int(answers.get("round_count") or 3)
+    if count < 1:
+        raise ValueError("round_count must be positive")
+    rounds = []
+    for index in range(1, count + 1):
+        mode = _mode_for_index(index, count)
+        rounds.append({"round_id": f"R{index}", "mode": mode, "title": ROUND_TITLE_BY_MODE.get(mode, f"Round {index}")})
+    return rounds
+
+
+def _mode_for_index(index: int, count: int) -> str:
+    if count == 1:
+        return "decide"
+    if index == 1:
+        return "explore"
+    if index == count:
+        return "decide"
+    return ROUND_MODE_SEQUENCE[min(index - 1, len(ROUND_MODE_SEQUENCE) - 2)]
+
+
+def _seat_answers(answers: dict[str, Any]) -> list[dict[str, Any]]:
+    seats = answers.get("seats")
+    if isinstance(seats, list) and seats:
+        return [dict(item) for item in seats if isinstance(item, dict)]
+    return [seat for seat in example_public_config()["seats"] if seat.get("enabled", True) is not False]
+
+
+def _seat_from_answers(item: dict[str, Any], index: int) -> dict[str, Any]:
+    provider = _str_value(item.get("provider"), "manual")
+    transport = _str_value(item.get("transport"), DEFAULT_PROVIDER_TRANSPORT.get(provider, "manual"))
+    seat: dict[str, Any] = {
+        "seat_id": _str_value(item.get("seat_id"), f"seat_{index}"),
+        "provider": provider,
+        "transport": transport,
+        "model": _str_value(item.get("model"), DEFAULT_PROVIDER_MODEL.get(provider, "custom")),
+        "reasoning_effort": _str_value(item.get("reasoning_effort"), DEFAULT_PROVIDER_REASONING.get(provider, "default")),
+        "role": _str_value(item.get("role"), "independent reviewer"),
+        "required": _bool_value(item.get("required"), True),
+        "enabled": _bool_value(item.get("enabled"), True),
+        "timeout_seconds": int(item.get("timeout_seconds") or DEFAULT_PROVIDER_TIMEOUT_SECONDS),
+    }
+    execution = item.get("execution")
+    if isinstance(execution, dict):
+        seat["execution"] = dict(execution)
+    if transport == "codex_exec_file":
+        seat["execution"] = {
+            **dict(seat.get("execution") or {}),
+            "sandbox": (seat.get("execution") or {}).get("sandbox", "workspace-write"),
+            "answer_path_required": (seat.get("execution") or {}).get("answer_path_required", True),
+            "stdout_capture_fallback": (seat.get("execution") or {}).get("stdout_capture_fallback", True),
+            "completion_marker": (seat.get("execution") or {}).get("completion_marker", "KDH_CODEX_DONE"),
+            "read_only_sandbox_forbidden": (seat.get("execution") or {}).get("read_only_sandbox_forbidden", True),
+        }
+    agent_profile_id = _str_value(item.get("agent_profile_id"), "")
+    if agent_profile_id:
+        seat["agent_profile_id"] = agent_profile_id
+    team_agents = item.get("team_agents")
+    if isinstance(team_agents, dict) and _bool_value(team_agents.get("enabled"), False):
+        seat["transport"] = "claude_k_team_agents"
+        seat["team_agents"] = {
+            "enabled": True,
+            "roles": _team_roles_value(team_agents.get("roles") or team_agents.get("required_teammates"), ["source-reader", "skeptic", "recorder"]),
+            "required_direct_message_count": int(team_agents.get("required_direct_message_count") or DEFAULT_TEAM_AGENTS_DIRECT_MESSAGE_COUNT),
+        }
+    return seat
+
+
+def validate_generated_config(config: dict[str, Any], *, config_path: Path | None = None) -> dict[str, Any]:
+    return validate_public_config(config, config_path=config_path)
+
+
+def _ask(stdout: TextIO, stdin: TextIO, label: str, default: str) -> str:
+    stdout.write(f"{label} [{default}]: ")
+    stdout.flush()
+    value = stdin.readline().strip()
+    return value or str(default)
+
+
+def _ask_list(stdout: TextIO, stdin: TextIO, label: str, default: list[str]) -> list[str]:
+    value = _ask(stdout, stdin, label + " (comma-separated)", ",".join(default))
+    return _list_value(value, default)
+
+
+def _ask_int(stdout: TextIO, stdin: TextIO, label: str, default: int) -> int:
+    value = _ask(stdout, stdin, label, str(default))
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise ValueError(f"{label} must be an integer") from exc
+    if parsed < 1:
+        raise ValueError(f"{label} must be positive")
+    return parsed
+
+
+def _ask_bool(stdout: TextIO, stdin: TextIO, label: str, default: bool) -> bool:
+    value = _ask(stdout, stdin, label + " (y/n)", "y" if default else "n")
+    return _bool_value(value, default)
+
+
+def _str_value(value: Any, default: str) -> str:
+    text = str(value).strip() if value is not None else ""
+    return text or str(default)
+
+
+def _list_value(value: Any, default: list[str]) -> list[str]:
+    if isinstance(value, list):
+        items = [str(item).strip() for item in value if str(item).strip()]
+    elif isinstance(value, str):
+        items = [item.strip() for item in value.split(",") if item.strip()]
+    else:
+        items = []
+    return items or list(default)
+
+
+def _catalogs_value(catalogs: Any, catalog_paths: Any) -> list[dict[str, Any]]:
+    if isinstance(catalogs, list) and catalogs:
+        result = []
+        for index, item in enumerate(catalogs, start=1):
+            if isinstance(item, dict):
+                entry = dict(item)
+            else:
+                path = str(item).strip()
+                if not path:
+                    continue
+                entry = {"path": path}
+            entry.setdefault("id", Path(str(entry.get("path") or f"catalog-{index}")).stem or f"catalog-{index}")
+            entry.setdefault("type", "explicit_agent_catalog")
+            entry.setdefault("enabled", True)
+            entry.setdefault("required", True)
+            result.append(entry)
+        return result
+    paths = _list_value(catalog_paths, [])
+    return [
+        {
+            "id": Path(path).stem or f"catalog-{index}",
+            "type": "explicit_agent_catalog",
+            "path": path,
+            "enabled": True,
+            "required": True,
+        }
+        for index, path in enumerate(paths, start=1)
+    ]
+
+
+def _team_roles_value(value: Any, default: list[str]) -> list[Any]:
+    if isinstance(value, list):
+        roles: list[Any] = []
+        for item in value:
+            if isinstance(item, dict):
+                name = _str_value(item.get("name") or item.get("role"), "")
+                profile_id = _str_value(item.get("agent_profile_id"), "")
+                if name or profile_id:
+                    role: dict[str, Any] = {}
+                    if name:
+                        role["name"] = name
+                    if profile_id:
+                        role["agent_profile_id"] = profile_id
+                    roles.append(role)
+            elif str(item).strip():
+                roles.append(str(item).strip())
+        return roles or list(default)
+    return _list_value(value, default)
+
+
+def _default_agent_catalog_paths() -> list[str]:
+    path = Path.cwd() / "closed-door-training" / "workspaces" / "kdh-agents" / "catalog" / "kdh-agents.json"
+    return [str(path)] if path.exists() else []
+
+
+def _ask_profile_assignments(stdout: TextIO, stdin: TextIO, seats: list[dict[str, Any]], catalogs: list[dict[str, Any]]) -> None:
+    profiles: dict[str, dict[str, Any]]
+    try:
+        profiles = load_agent_profiles(catalogs)
+    except ValueError as exc:
+        stdout.write(f"Could not load agent catalogs yet: {exc}\n")
+        profiles = {}
+    for seat in seats:
+        transport = str(seat.get("transport") or "")
+        compatible = _compatible_profile_ids(profiles, transport=transport)
+        default_profile = compatible[0] if compatible else ""
+        hint = f" compatible: {', '.join(compatible[:8])}" if compatible else ""
+        profile_id = _ask(stdout, stdin, f"Agent profile for seat {seat.get('seat_id', '')}{hint}", default_profile)
+        if profile_id:
+            seat["agent_profile_id"] = profile_id
+        team_agents = seat.get("team_agents")
+        if not isinstance(team_agents, dict):
+            continue
+        roles = _team_roles_value(team_agents.get("roles") or team_agents.get("required_teammates"), ["source-reader", "skeptic", "recorder"])
+        updated_roles: list[Any] = []
+        for role in roles:
+            if isinstance(role, dict):
+                name = _str_value(role.get("name") or role.get("role"), _str_value(role.get("agent_profile_id"), "role"))
+                current = _str_value(role.get("agent_profile_id"), "")
+            else:
+                name = str(role).strip()
+                current = ""
+            role_profile_id = _ask(stdout, stdin, f"Agent profile for Team Agents role {name}{hint}", current)
+            updated_roles.append({"name": name, **({"agent_profile_id": role_profile_id} if role_profile_id else {})})
+        team_agents["roles"] = updated_roles
+
+
+def _compatible_profile_ids(profiles: dict[str, dict[str, Any]], *, transport: str) -> list[str]:
+    ids = []
+    for profile_id, profile in sorted(profiles.items()):
+        compatibility = profile_compatibility(profile, transport=transport)
+        if compatibility.get("compatible") is not False:
+            ids.append(profile_id)
+    return ids
+
+
+def _bool_value(value: Any, default: bool) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    lowered = str(value).strip().lower()
+    if lowered in {"1", "true", "t", "yes", "y", "on"}:
+        return True
+    if lowered in {"0", "false", "f", "no", "n", "off"}:
+        return False
+    raise ValueError(f"invalid boolean value: {value}")

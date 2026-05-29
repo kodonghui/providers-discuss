@@ -1,0 +1,53 @@
+{
+  "input": {
+    "package_strategy": "local_file_scan",
+    "source_dirs": [
+      "./inputs"
+    ]
+  },
+  "objective": "Use Claude Team Agents through prompt-only and proof-gated artifacts.",
+  "orchestrator": {
+    "claim_gate_required": true,
+    "read_prior_rounds": true,
+    "write_prompt_delta_after_each_round": true
+  },
+  "rounds": [
+    {
+      "mode": "team_review",
+      "round_id": "R1",
+      "title": "Team-based source reading and critique"
+    },
+    {
+      "mode": "decision",
+      "round_id": "R2",
+      "title": "Decision after Team Agents evidence"
+    }
+  ],
+  "schema": "providers-discuss.public-config.v1",
+  "seats": [
+    {
+      "execution": {
+        "effort": "max",
+        "model": "opus",
+        "permission_mode": "auto"
+      },
+      "model": "opus",
+      "provider": "anthropic",
+      "reasoning_effort": "max",
+      "required": true,
+      "role": "team-based source reader, skeptic, and recorder",
+      "seat_id": "claude_team",
+      "team_agents": {
+        "enabled": true,
+        "required_direct_message_count": 6,
+        "roles": [
+          "source-reader",
+          "skeptic",
+          "recorder"
+        ]
+      },
+      "timeout_seconds": 2400,
+      "transport": "claude_k_team_agents"
+    }
+  ]
+}

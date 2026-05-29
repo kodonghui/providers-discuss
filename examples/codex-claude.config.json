@@ -1,0 +1,61 @@
+{
+  "input": {
+    "package_strategy": "local_file_scan",
+    "source_dirs": [
+      "./inputs"
+    ]
+  },
+  "objective": "Compare a Codex file-output seat with a Claude Code smoke-gated seat.",
+  "orchestrator": {
+    "claim_gate_required": true,
+    "read_prior_rounds": true,
+    "write_prompt_delta_after_each_round": true
+  },
+  "rounds": [
+    {
+      "mode": "explore",
+      "round_id": "R1",
+      "title": "Independent proposals"
+    },
+    {
+      "mode": "challenge",
+      "round_id": "R2",
+      "title": "Challenge unsupported claims"
+    }
+  ],
+  "schema": "providers-discuss.public-config.v1",
+  "seats": [
+    {
+      "execution": {
+        "answer_path_required": true,
+        "completion_marker": "KDH_CODEX_DONE",
+        "read_only_sandbox_forbidden": true,
+        "sandbox": "workspace-write",
+        "stdout_capture_fallback": true
+      },
+      "model": "gpt-5.5",
+      "provider": "openai",
+      "reasoning_effort": "high",
+      "required": true,
+      "role": "Codex-style implementation reviewer",
+      "seat_id": "codex_reviewer",
+      "timeout_seconds": 2400,
+      "transport": "codex_exec_file"
+    },
+    {
+      "execution": {
+        "effort": "max",
+        "model": "opus",
+        "permission_mode": "auto"
+      },
+      "model": "opus",
+      "provider": "anthropic",
+      "reasoning_effort": "max",
+      "required": false,
+      "role": "Claude Code smoke-gated second opinion",
+      "seat_id": "claude_reviewer",
+      "timeout_seconds": 2400,
+      "transport": "claude_k"
+    }
+  ]
+}

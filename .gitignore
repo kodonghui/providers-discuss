@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+.kdh/
+runs/
+input-pack/
+auth-report/
+adapter-capabilities/
+manual-answer.md
+providers-discuss.config.json
+
+.DS_Store

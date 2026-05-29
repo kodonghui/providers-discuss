@@ -1,0 +1,56 @@
+# providers-discuss Agent Rules
+
+## Role
+
+This repository owns the portable `providers-discuss` package: a local,
+file-backed discussion runner for comparing multiple AI provider seats.
+
+## Boundaries
+
+- Keep the package local-first and observable.
+- Do not add hidden daemons, cron jobs, background workers, browser automation,
+  provider-home scraping, OAuth token collection, or implicit hooks.
+- Do not claim mature live dispatch for adapters that are only structural,
+  smoke-only, or placeholder.
+- Agent profiles are prompt-only role contracts. They must not imply runtime
+  agent execution, extra tools, credentials, or filesystem permissions.
+- Provider outputs belong in run artifacts such as `answers/`, `logs/`,
+  `claims/`, `gates/`, and `orchestrator/`; providers must not write the event
+  bus directly.
+
+## Current Maturity
+
+- `manual_import`: stable manual/import workflow.
+- `codex_exec_file`: structural file-output adapter; public live dispatch still
+  needs hardening.
+- `claude_k`: smoke-gated Claude Code transport.
+- `claude_k_team_agents`: proof-gated Team Agents smoke path, not normal
+  multiround automation.
+- `gemini_cli`: placeholder/optional until implemented and verified.
+
+## Development Rules
+
+- Prefer Python standard library for the current package.
+- Keep CLI behavior explicit and recoverable.
+- Keep configs and examples free of private paths, OAuth tokens, cookies,
+  provider-home config bodies, browser state, and shell history.
+- Update README maturity claims together with adapter capability changes.
+- If a change touches provider execution, add or update a smoke/proof path.
+
+## Verification
+
+Before publishing or handing off changes:
+
+```bash
+bin/providers-discuss --help
+for config in examples/*.config.json; do
+  bin/providers-discuss validate-config "$config" --json >/dev/null
+done
+tests/smoke-package.sh
+```
+
+For docs-only changes, run:
+
+```bash
+git diff --check
+```

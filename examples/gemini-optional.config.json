@@ -1,0 +1,45 @@
+{
+  "input": {
+    "package_strategy": "local_file_scan",
+    "source_dirs": [
+      "./inputs"
+    ]
+  },
+  "objective": "Keep Gemini available as a disabled optional future seat while manual review remains required.",
+  "orchestrator": {
+    "claim_gate_required": true,
+    "read_prior_rounds": true,
+    "write_prompt_delta_after_each_round": true
+  },
+  "rounds": [
+    {
+      "mode": "explore",
+      "round_id": "R1",
+      "title": "Manual baseline with optional Gemini retained in config"
+    }
+  ],
+  "schema": "providers-discuss.public-config.v1",
+  "seats": [
+    {
+      "model": "human",
+      "provider": "manual",
+      "reasoning_effort": "manual",
+      "required": true,
+      "role": "human reviewer who writes the answer file",
+      "seat_id": "human_reviewer",
+      "timeout_seconds": 2400,
+      "transport": "manual"
+    },
+    {
+      "enabled": false,
+      "model": "gemini-latest",
+      "provider": "google",
+      "reasoning_effort": "default",
+      "required": false,
+      "role": "optional Gemini contradiction finder, disabled until configured",
+      "seat_id": "gemini_optional",
+      "timeout_seconds": 2400,
+      "transport": "gemini_cli"
+    }
+  ]
+}
