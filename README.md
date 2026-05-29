@@ -45,8 +45,13 @@ From this directory:
 providers-discuss --help
 ```
 
-The installer only creates a command link under `$HOME/.local/bin` by default.
-It does not modify provider settings or install hooks.
+The installer creates local links for:
+
+- `$HOME/.local/bin/providers-discuss`
+- `$HOME/.codex/skills/providers-discuss`
+
+It does not modify provider settings or install hooks. Restart Codex after
+installing so the `providers-discuss` skill is loaded.
 
 Uninstall:
 

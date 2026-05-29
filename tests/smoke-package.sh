@@ -18,6 +18,15 @@ cmd="${pkg}/bin/providers-discuss"
 "${cmd}" team-agents-proof-report --help >/dev/null
 "${cmd}" agent-profiles --help >/dev/null
 
+install_home="${tmp}/install-home"
+"${pkg}/install.sh" --prefix "${install_home}/.local" --codex-home "${install_home}/.codex" --dry-run >/dev/null
+"${pkg}/install.sh" --prefix "${install_home}/.local" --codex-home "${install_home}/.codex" >/dev/null
+"${install_home}/.local/bin/providers-discuss" --help >/dev/null
+test -f "${install_home}/.codex/skills/providers-discuss/SKILL.md"
+"${pkg}/install.sh" --prefix "${install_home}/.local" --codex-home "${install_home}/.codex" --uninstall >/dev/null
+test ! -e "${install_home}/.local/bin/providers-discuss"
+test ! -e "${install_home}/.codex/skills/providers-discuss"
+
 for config in "${pkg}"/examples/*.config.json; do
   "${cmd}" validate-config "${config}" --json >/dev/null
 done
