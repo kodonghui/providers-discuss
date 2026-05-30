@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import sys
 from pathlib import Path
 from typing import Any
@@ -43,6 +44,7 @@ from .agent_profiles import (
 )
 from .claude_smoke import run_claude_k_smoke
 from .claude_team_agents_smoke import run_claude_team_agents_smoke
+from .gemini_smoke import run_gemini_headless_smoke, run_gemini_live_dispatch
 from .claude_workspace_trust import (
     inspect_hook_config,
     inspect_permissions,
@@ -177,8 +179,9 @@ def main(argv: list[str] | None = None) -> int:
     run_round = sub.add_parser("run-round")
     add_run_args(run_round)
     run_round.add_argument("--round", required=True)
-    run_round.add_argument("--mode", choices=["dry-run", "manual-import"], required=True)
+    run_round.add_argument("--mode", choices=["dry-run", "manual-import", "live-dispatch"], required=True)
     run_round.add_argument("--answer", action="append", default=[], help="manual-import answer as seat_id=/path/file.md")
+    run_round.add_argument("--cli-path", action="append", default=[], help="live dispatch CLI override as key=/path")
 
     gate = sub.add_parser("gate")
     add_run_args(gate)
@@ -229,6 +232,14 @@ def main(argv: list[str] | None = None) -> int:
         help="label how Team Agents behavior was triggered; this command does not install hooks",
     )
     smoke_team.add_argument("--json", action="store_true")
+
+    smoke_gemini = sub.add_parser("smoke-gemini-headless")
+    add_run_args(smoke_gemini)
+    smoke_gemini.add_argument("--round", required=True)
+    smoke_gemini.add_argument("--seat", required=True)
+    smoke_gemini.add_argument("--gemini-bin", type=Path, required=True)
+    smoke_gemini.add_argument("--timeout-seconds", type=int, default=DEFAULT_PROVIDER_TIMEOUT_SECONDS)
+    smoke_gemini.add_argument("--json", action="store_true")
 
     team_prompt = sub.add_parser("team-agents-prompt")
     add_run_args(team_prompt)
@@ -331,6 +342,8 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_smoke_claude_k(args)
         if args.command == "smoke-claude-team-agents":
             return cmd_smoke_claude_team_agents(args)
+        if args.command == "smoke-gemini-headless":
+            return cmd_smoke_gemini_headless(args)
         if args.command == "team-agents-prompt":
             return cmd_team_agents_prompt(args)
         if args.command == "team-agents-proof-report":
@@ -1010,7 +1023,9 @@ def cmd_run_round(args: argparse.Namespace) -> int:
     spec = round_spec(run, args.round)
     if args.mode == "dry-run":
         return run_round_dry(base, run, spec)
-    return run_round_manual_import(base, run, spec, args.answer)
+    if args.mode == "manual-import":
+        return run_round_manual_import(base, run, spec, args.answer)
+    return run_round_live_dispatch(base, run, spec, parse_cli_path_overrides(args.cli_path))
 
 
 def run_round_dry(base: Path, run: dict[str, Any], spec: dict[str, Any]) -> int:
@@ -1115,6 +1130,89 @@ def run_round_manual_import(base: Path, run: dict[str, Any], spec: dict[str, Any
     run["current_round"] = round_id
     save_run(base, run)
     print(f"round {round_id}: manual answers imported")
+    return 0
+
+
+def run_round_live_dispatch(base: Path, run: dict[str, Any], spec: dict[str, Any], cli_overrides: dict[str, Path]) -> int:
+    round_id = spec["round_id"]
+    seats = provider_seats(base)
+    manifest_lines = ["# Raw Output Manifest", ""]
+    results: list[dict[str, Any]] = []
+    for seat in seats:
+        seat_id = seat["seat_id"]
+        if seat.get("transport") == "gemini_cli":
+            result = run_gemini_live_dispatch(
+                base=base,
+                run=run,
+                spec=spec,
+                seat=seat,
+                gemini_bin=_resolve_live_cli(seat=seat, cli_overrides=cli_overrides, default_name="gemini"),
+                timeout_seconds=effective_timeout_seconds(seat),
+            )
+        else:
+            result = write_dry_run_result(base=base, run=run, spec=spec, seat=seat)
+        results.append(result)
+        manifest_lines.append(
+            "- round: `{round}` seat: `{seat}` mode: `live-dispatch` status: `{status}` answer: `{answer}` status_path: `{status_path}` proof: `{proof}` failure: `{failure}`".format(
+                round=round_id,
+                seat=seat_id,
+                status=result["status"],
+                answer=result["answer_path"] or "none",
+                status_path=result["status_path"],
+                proof=result["proof_path"],
+                failure=result["failure_classification"] or "none",
+            )
+        )
+        event_type = "provider.completed" if result["status"] == "completed" else ("provider.skipped" if result["status"] == "skipped" else "provider.failed")
+        append_event(
+            base,
+            event_type,
+            run_id=run["run_id"],
+            round_id=round_id,
+            actor=seat_id,
+            mode="live-dispatch",
+            required=result["required"],
+            status=result["status"],
+            failure_classification=result["failure_classification"],
+            refs=result["refs"],
+        )
+    (base / "raw-output-manifest.md").write_text("\n".join(manifest_lines) + "\n", encoding="utf-8")
+    write_artifact_hash(base, "raw-output-manifest.md")
+    failed_required = [item for item in results if item["required"] and item["status"] != "completed"]
+    if failed_required:
+        verify = {
+            "schema": VERIFY_SCHEMA,
+            "run_id": run["run_id"],
+            "status": "fail",
+            "checks": [
+                {
+                    "check_id": f"VR-{index:03d}",
+                    "name": f"provider_required_output_{item['seat_id']}",
+                    "status": "fail",
+                    "refs": [item["status_path"], item["proof_path"]],
+                }
+                for index, item in enumerate(failed_required, start=1)
+            ],
+            "blockers": [
+                {
+                    "check": "provider_required_output",
+                    "seat_id": item["seat_id"],
+                    "reason": item["failure_classification"],
+                }
+                for item in failed_required
+            ],
+        }
+        write_json(base / "verify.json", verify)
+        write_artifact_hash(base, "verify.json")
+        run["state"] = "failed"
+        run["current_round"] = round_id
+        save_run(base, run)
+        print(f"round {round_id}: required provider failure", file=sys.stderr)
+        return 3
+    run["state"] = "round_outputs_collected"
+    run["current_round"] = round_id
+    save_run(base, run)
+    print(f"round {round_id}: live dispatch completed")
     return 0
 
 
@@ -1418,6 +1516,30 @@ def cmd_smoke_claude_team_agents(args: argparse.Namespace) -> int:
     else:
         print(f"smoke-claude-team-agents: {result['status']}")
         print(f"team: {result['team_name']}")
+        print(f"proof: {result['proof_path']}")
+    return 0 if result["status"] == "pass" else 1
+
+
+def cmd_smoke_gemini_headless(args: argparse.Namespace) -> int:
+    base = must_run_root(args.root, args.run_id)
+    run = load_run(base)
+    ensure_not_terminal(run, "run gemini headless smoke")
+    round_spec(run, args.round)
+    seat = find_provider_seat(base, args.seat)
+    if seat.get("transport") != "gemini_cli":
+        raise ValueError(f"seat {args.seat} is not gemini_cli transport")
+    result = run_gemini_headless_smoke(
+        base=base,
+        run=run,
+        round_id=args.round,
+        seat=seat,
+        gemini_bin=args.gemini_bin,
+        timeout_seconds=args.timeout_seconds,
+    )
+    if args.json:
+        print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
+    else:
+        print(f"smoke-gemini-headless: {result['status']}")
         print(f"proof: {result['proof_path']}")
     return 0 if result["status"] == "pass" else 1
 
@@ -1904,6 +2026,20 @@ def parse_answer_args(items: list[str]) -> dict[str, Path]:
         seat, path = item.split("=", 1)
         parsed[seat] = Path(path)
     return parsed
+
+
+def _resolve_live_cli(*, seat: dict[str, Any], cli_overrides: dict[str, Path], default_name: str) -> Path | None:
+    keys = [
+        str(seat.get("seat_id") or ""),
+        str(seat.get("transport") or ""),
+        str(seat.get("provider") or ""),
+        default_name,
+    ]
+    for key in keys:
+        if key and key in cli_overrides:
+            return cli_overrides[key]
+    resolved = shutil.which(default_name)
+    return Path(resolved) if resolved else None
 
 
 def ensure_round_allowed(run: dict[str, Any]) -> None:

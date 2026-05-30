@@ -155,6 +155,7 @@ Examples:
 - `examples/codex-claude.config.json`
 - `examples/claude-team-agents.config.json`
 - `examples/gemini-optional.config.json`
+- `examples/gemini-live.config.json`
 - `examples/profile-balanced-kdh.config.json`
 
 For user-facing setup, follow the staged intake workflow in
@@ -224,13 +225,26 @@ research, or LLM summarization.
 | codex_exec_file | codex_exec_file | structural | not polished public live dispatch |
 | claude_code | claude_k | smoke_only | smoke-claude-k only |
 | claude_team_agents | claude_k_team_agents | smoke_only | smoke-claude-team-agents plus proof verifier |
-| gemini_cli | gemini_cli | placeholder | not implemented |
+| gemini_cli | gemini_cli | live_headless | smoke-gemini-headless or run-round live-dispatch |
 
 Use `adapter-capabilities` to inspect the current truth:
 
 ```bash
 bin/providers-discuss adapter-capabilities --config examples/claude-team-agents.config.json --json
 ```
+
+Gemini headless path:
+
+```bash
+bin/providers-discuss auth-preflight providers-discuss.config.json --report-dir auth-report
+bin/providers-discuss smoke-gemini-headless <run-id> --root <runs> --round R1 --seat gemini_required --gemini-bin "$(command -v gemini)" --json
+bin/providers-discuss run-round <run-id> --root <runs> --round R1 --mode live-dispatch --cli-path "gemini_cli=$(command -v gemini)"
+```
+
+Gemini uses the official headless CLI shape `cat prompt.md | gemini --prompt
+... --output-format json --model ...`. The runner stores stdout, stderr, parsed
+JSON, answer, status, and transport proof artifacts. It never copies Gemini
+credential files or API keys into reports.
 
 ## Claude Team Agents
 

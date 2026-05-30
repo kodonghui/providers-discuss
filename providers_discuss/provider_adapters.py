@@ -107,7 +107,14 @@ class ProviderAdapter:
                 f"team-agents roles: {', '.join(_safe_label(role) for role in labels) or 'configured'}",
             ]
         if self.transport == "gemini_cli":
-            return [f"gemini < {prompt_path} > {answer_path}  # model={model or 'configured'}"]
+            return [
+                "cat {prompt} | gemini --prompt 'Execute the provider-discuss prompt from stdin.' "
+                "--output-format json --model {model} > {answer}".format(
+                    prompt=prompt_path,
+                    model=model or "configured",
+                    answer=answer_path,
+                )
+            ]
         return [f"{self.cli_name} < {prompt_path} > {answer_path}"]
 
 
@@ -152,9 +159,9 @@ ADAPTERS: dict[str, ProviderAdapter] = {
         adapter_id="gemini_cli",
         transport="gemini_cli",
         provider_ids=("google",),
-        maturity="placeholder",
-        live_dispatch="not_implemented_in_p6",
-        live_dispatch_available=False,
+        maturity="live_headless",
+        live_dispatch="smoke-gemini-headless_or_run-round_live-dispatch",
+        live_dispatch_available=True,
         cli_name="gemini",
     ),
 }

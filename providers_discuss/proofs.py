@@ -17,7 +17,7 @@ def validate_transport_proof(proof: dict[str, Any], base: Path) -> dict[str, Any
     _expect(checks, blockers, "transport_schema", proof.get("schema") == TRANSPORT_PROOF_SCHEMA, "unexpected transport proof schema")
 
     transport = proof.get("transport")
-    _expect(checks, blockers, "transport_supported", transport in {"codex_exec_file", "claude_k"}, f"unsupported transport: {transport}")
+    _expect(checks, blockers, "transport_supported", transport in {"codex_exec_file", "claude_k", "gemini_cli"}, f"unsupported transport: {transport}")
     _expect(checks, blockers, "not_timed_out", proof.get("timed_out") is not True, "transport timed out")
     _expect(checks, blockers, "not_killed_before_completion", proof.get("killed") is not True, "transport was killed before completion")
     _expect(checks, blockers, "not_blocked_by_runtime_prompt", not proof.get("blocked_reason"), str(proof.get("blocked_reason") or "runtime prompt blocked"))
@@ -30,6 +30,8 @@ def validate_transport_proof(proof: dict[str, Any], base: Path) -> dict[str, Any
         _validate_file_output(proof, base, checks, blockers, "answer_path")
     elif transport == "claude_k":
         _validate_claude_k(proof, base, checks, blockers)
+    elif transport == "gemini_cli":
+        _validate_gemini_cli(proof, base, checks, blockers)
 
     return _result(checks, blockers)
 
@@ -190,6 +192,25 @@ def _validate_claude_k(proof: dict[str, Any], base: Path, checks: list[dict[str,
     _expect(checks, blockers, "status_json_parseable", True, "")
     _expect(checks, blockers, "status_not_timed_out", status.get("timed_out") is not True, "status says timed out")
     _expect(checks, blockers, "status_not_failed", status.get("verdict") not in {"failed", "timeout"}, f"bad status verdict: {status.get('verdict')}")
+
+
+def _validate_gemini_cli(proof: dict[str, Any], base: Path, checks: list[dict[str, Any]], blockers: list[dict[str, Any]]) -> None:
+    _validate_file_output(proof, base, checks, blockers, "answer_path")
+    status_path = _resolve(base, proof.get("status_path", ""))
+    if not status_path:
+        _expect(checks, blockers, "status_path_present", False, "status_path missing")
+        return
+    if not status_path.exists():
+        _expect(checks, blockers, "status_path_exists", False, f"status path missing: {status_path}")
+        return
+    try:
+        status = json.loads(status_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        _expect(checks, blockers, "status_json_parseable", False, f"malformed status JSON: {exc}")
+        return
+    _expect(checks, blockers, "status_json_parseable", True, "")
+    _expect(checks, blockers, "status_not_timed_out", status.get("timed_out") is not True, "status says timed out")
+    _expect(checks, blockers, "status_completed", status.get("status") == "completed", f"bad status: {status.get('status')}")
 
 
 def _validate_file_output(

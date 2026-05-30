@@ -1,0 +1,34 @@
+{
+  "input": {
+    "package_strategy": "local_file_scan",
+    "source_dirs": [
+      "./inputs"
+    ]
+  },
+  "objective": "Run a required Gemini headless provider seat after local auth-preflight passes.",
+  "orchestrator": {
+    "claim_gate_required": true,
+    "read_prior_rounds": true,
+    "write_prompt_delta_after_each_round": true
+  },
+  "rounds": [
+    {
+      "mode": "decide",
+      "round_id": "R1",
+      "title": "Gemini headless decision"
+    }
+  ],
+  "schema": "providers-discuss.public-config.v1",
+  "seats": [
+    {
+      "model": "gemini-latest",
+      "provider": "google",
+      "reasoning_effort": "default",
+      "required": true,
+      "role": "Gemini headless reviewer",
+      "seat_id": "gemini_required",
+      "timeout_seconds": 2400,
+      "transport": "gemini_cli"
+    }
+  ]
+}

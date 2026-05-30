@@ -16,6 +16,7 @@ cmd="${pkg}/bin/providers-discuss"
 "${cmd}" runtime-preflight --help >/dev/null
 "${cmd}" team-agents-prompt --help >/dev/null
 "${cmd}" team-agents-proof-report --help >/dev/null
+"${cmd}" smoke-gemini-headless --help >/dev/null
 "${cmd}" agent-profiles --help >/dev/null
 
 install_home="${tmp}/install-home"
@@ -76,6 +77,62 @@ for transport in ("codex_exec_file", "claude_k", "claude_k_team_agents", "gemini
     hint = login_hint_for_transport(transport).lower()
     assert "login" in hint
     assert "url" in hint
+PY
+
+fake_gemini="${tmp}/fake-gemini"
+cat > "${fake_gemini}" <<'PY'
+#!/usr/bin/env python3
+import json
+import sys
+
+prompt = sys.stdin.read()
+argv = " ".join(sys.argv)
+if "GEMINI_AUTH_OK" in argv:
+    print(json.dumps({"response": "GEMINI_AUTH_OK"}))
+    raise SystemExit(0)
+
+response = "# Fake Gemini answer\n\n"
+response += "package smoke headless response\n"
+response += f"prompt_bytes={len(prompt.encode('utf-8'))}\n"
+response += "KDH_GEMINI_DONE\n"
+print(json.dumps({"response": response, "stats": {"models": {"gemini-test": {"tokens": {"total": 1}}}}}))
+PY
+chmod +x "${fake_gemini}"
+
+cat > "${tmp}/gemini-live.config.json" <<'EOF'
+{
+  "schema": "providers-discuss.public-config.v1",
+  "objective": "Smoke Gemini headless dispatch.",
+  "rounds": [
+    {"round_id": "R1", "mode": "decide", "title": "Gemini smoke decision"}
+  ],
+  "seats": [
+    {
+      "seat_id": "gemini_required",
+      "provider": "google",
+      "transport": "gemini_cli",
+      "model": "gemini-test",
+      "reasoning_effort": "default",
+      "role": "required Gemini headless reviewer",
+      "required": true,
+      "timeout_seconds": 5
+    }
+  ]
+}
+EOF
+"${cmd}" auth-preflight "${tmp}/gemini-live.config.json" \
+  --report-dir "${tmp}/gemini-auth" \
+  --cli-path "gemini_cli=${fake_gemini}" \
+  --json > "${tmp}/gemini-auth.json"
+python3 - "${tmp}/gemini-auth.json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+assert payload["status"] == "pass"
+assert payload["seats"][0]["probe"] == "gemini_headless_probe"
+assert payload["seats"][0]["status"] == "installed_logged_in"
 PY
 
 profile_report="$("${cmd}" agent-profiles \
@@ -159,6 +216,30 @@ PY
 "${cmd}" gate "${run_id}" --root "${work}/runs" --round R1 >/dev/null
 "${cmd}" orchestrate "${run_id}" --root "${work}/runs" --after-round R1 >/dev/null
 "${cmd}" verify "${run_id}" --root "${work}/runs" >/dev/null
+
+gemini_run="$("${cmd}" init \
+  --config "${tmp}/gemini-live.config.json" \
+  --root "${work}/runs" \
+  --run-id smoke-gemini)"
+"${cmd}" preflight "${gemini_run}" --root "${work}/runs" >/dev/null
+"${cmd}" smoke-gemini-headless "${gemini_run}" \
+  --root "${work}/runs" \
+  --round R1 \
+  --seat gemini_required \
+  --gemini-bin "${fake_gemini}" \
+  --timeout-seconds 5 \
+  --json >/dev/null
+"${cmd}" verify-proof "${gemini_run}" \
+  --root "${work}/runs" \
+  --kind transport \
+  --proof logs/round-R1/gemini_required.proof.json >/dev/null
+"${cmd}" run-round "${gemini_run}" \
+  --root "${work}/runs" \
+  --round R1 \
+  --mode live-dispatch \
+  --cli-path "gemini_cli=${fake_gemini}" >/dev/null
+"${cmd}" verify "${gemini_run}" --root "${work}/runs" >/dev/null
+grep -q "KDH_GEMINI_DONE" "${work}/runs/${gemini_run}/answers/round-R1/gemini_required.md"
 
 profile_run="$("${cmd}" init \
   --config "${pkg}/examples/profile-balanced-kdh.config.json" \

@@ -1,7 +1,8 @@
 # Gemini Live Dispatch Plan
 
-Status: plan only. Do not claim Gemini live provider support until the gates in
-this document pass with real artifacts.
+Status: implementation path added. Do not claim a target machine is Gemini live
+ready until its local `auth-preflight`, `smoke-gemini-headless`, and normal
+`run-round --mode live-dispatch` gates pass with real artifacts.
 
 ## Objective
 

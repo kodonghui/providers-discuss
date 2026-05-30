@@ -33,10 +33,10 @@ DEFAULT_CLI_BY_TRANSPORT = {
 }
 
 LOGIN_HINT_BY_TRANSPORT = {
-    "codex_exec_file": "Run `codex login` or `codex login --with-api-key`; if the CLI prints a login URL, open it and finish the official flow.",
-    "claude_k": "Run `claude auth login`; if the CLI prints a login URL, open it and finish the official Claude Code flow.",
-    "claude_k_team_agents": "Run `claude auth login`; if the CLI prints a login URL, open it and finish the official Claude Code flow.",
-    "gemini_cli": "Run the official Gemini CLI login/auth command for this user; if it prints a login URL, open it, then rerun auth-preflight.",
+    "codex_exec_file": "Run `codex login` or `codex login --with-api-key` using your own credentials; if the CLI emits a login URL, open that URL yourself.",
+    "claude_k": "Run `claude auth login` and complete the official Claude Code login flow; if the CLI emits a login URL, open that URL yourself.",
+    "claude_k_team_agents": "Run `claude auth login` and complete the official Claude Code login flow; if the CLI emits a login URL, open that URL yourself.",
+    "gemini_cli": "Run `gemini` and complete `/auth`, or configure `GEMINI_API_KEY`/Vertex env auth; if the CLI emits a login URL, open that URL yourself.",
     "manual": "Manual/import seats do not need provider OAuth.",
 }
 
@@ -127,7 +127,7 @@ def inspect_seat_auth(
             status = STATUS_MISSING_CLI
             probe = "which"
         else:
-            status, probe = _probe_login_status(transport=transport, cli_path=cli_path, timeout_seconds=timeout_seconds)
+            status, probe = _probe_login_status(seat=seat, transport=transport, cli_path=cli_path, timeout_seconds=timeout_seconds)
     blocker = required and status in {STATUS_MISSING_CLI, STATUS_INSTALLED_NOT_LOGGED_IN}
     optional_issue = (not required) and status in {STATUS_MISSING_CLI, STATUS_INSTALLED_NOT_LOGGED_IN}
     login_hint = login_hint_for_transport(transport)
@@ -205,8 +205,8 @@ def _resolve_cli_path(*, seat: dict[str, Any], cli_overrides: dict[str, Path]) -
     return shutil.which(command) or ""
 
 
-def _probe_login_status(*, transport: str, cli_path: str, timeout_seconds: int) -> tuple[str, str]:
-    commands = _probe_commands(transport=transport, cli_path=cli_path)
+def _probe_login_status(*, seat: dict[str, Any], transport: str, cli_path: str, timeout_seconds: int) -> tuple[str, str]:
+    commands = _probe_commands(seat=seat, transport=transport, cli_path=cli_path)
     if not commands:
         return STATUS_INSTALLED_NOT_LOGGED_IN, "installed_only"
     for probe_name, command in commands:
@@ -219,13 +219,17 @@ def _probe_login_status(*, transport: str, cli_path: str, timeout_seconds: int) 
     return STATUS_INSTALLED_NOT_LOGGED_IN, commands[-1][0]
 
 
-def _probe_commands(*, transport: str, cli_path: str) -> list[tuple[str, list[str]]]:
+def _probe_commands(*, seat: dict[str, Any], transport: str, cli_path: str) -> list[tuple[str, list[str]]]:
     if transport == "codex_exec_file":
         return [("codex_login_status", [cli_path, "login", "status"])]
     if transport in {"claude_k", "claude_k_team_agents"}:
         return [("claude_auth_status", [cli_path, "auth", "status", "--json"])]
     if transport == "gemini_cli":
-        return []
+        model = _seat_model(seat)
+        command = [cli_path, "-p", "Reply with exactly: GEMINI_AUTH_OK", "--output-format", "json"]
+        if model:
+            command.extend(["--model", model])
+        return [("gemini_headless_probe", command)]
     return []
 
 
@@ -258,6 +262,8 @@ def _status_from_probe(*, probe_name: str, returncode: int, stdout: str, stderr:
         return STATUS_INSTALLED_LOGGED_IN if payload.get("loggedIn") is True else STATUS_INSTALLED_NOT_LOGGED_IN
     if probe_name == "codex_login_status":
         return STATUS_INSTALLED_LOGGED_IN if _looks_logged_in(text) else STATUS_INSTALLED_NOT_LOGGED_IN
+    if probe_name == "gemini_headless_probe":
+        return STATUS_INSTALLED_LOGGED_IN if _gemini_probe_ok(text) else STATUS_INSTALLED_NOT_LOGGED_IN
     return STATUS_INSTALLED_LOGGED_IN if _looks_logged_in(text) else STATUS_INSTALLED_NOT_LOGGED_IN
 
 
@@ -266,6 +272,26 @@ def _looks_logged_in(text: str) -> bool:
     if re.search(r"\bnot\s+logged\s+in\b|\blogged\s+out\b|\bunauth", lowered):
         return False
     return "logged in" in lowered or "logged_in" in lowered or '"loggedin": true' in lowered.replace(" ", "")
+
+
+def _gemini_probe_ok(text: str) -> bool:
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        return "GEMINI_AUTH_OK" in text
+    if isinstance(payload, dict):
+        response = payload.get("response")
+        if isinstance(response, str) and response.strip() == "GEMINI_AUTH_OK":
+            return True
+        error = payload.get("error")
+        if error:
+            return False
+    return False
+
+
+def _seat_model(seat: dict[str, Any]) -> str:
+    execution = seat.get("execution") if isinstance(seat.get("execution"), dict) else {}
+    return str(seat.get("model") or execution.get("model") or "").strip()
 
 
 def _safe_cli_path(path: str) -> str:
