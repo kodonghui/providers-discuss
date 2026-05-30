@@ -14,6 +14,7 @@ CONFIGURE_SCHEMA = "providers-discuss.configure.v1"
 
 SUPPORTED_INTAKE_LANGUAGES = ("English", "Korean", "Chinese", "Japanese", "Spanish")
 SUPPORTED_BRAINSTORMING_MODES = ("none", "light", "deep")
+INTAKE_PROVIDER_FAMILIES = ("gpt/codex", "claude", "claude team agents", "gemini")
 
 ROUND_MODE_SEQUENCE = ("explore", "challenge", "synthesize", "verify", "decide")
 ROUND_TITLE_BY_MODE = {
@@ -111,28 +112,32 @@ def configure_interactive(stdin: TextIO = sys.stdin, stdout: TextIO = sys.stdout
     seat_count = _ask_int(stdout, stdin, "Seat count", len([seat for seat in defaults["seats"] if seat.get("enabled", True) is not False]))
     seats: list[dict[str, Any]] = []
     default_seats = defaults["seats"]
+    _write_provider_options(stdout)
     for index in range(seat_count):
         default = default_seats[index] if index < len(default_seats) else {}
         stdout.write(f"\nSeat {index + 1}\n")
-        _write_provider_options(stdout)
         seat: dict[str, Any] = {}
         seat["seat_id"] = _ask(stdout, stdin, "Seat id", default.get("seat_id") or f"seat_{index + 1}")
-        seat["provider"] = _ask(stdout, stdin, "Provider (openai/anthropic/google/manual/other)", default.get("provider") or "manual")
-        provider = seat["provider"]
-        seat["transport"] = _ask(stdout, stdin, "Transport", default.get("transport") or DEFAULT_PROVIDER_TRANSPORT.get(provider, "manual"))
-        seat["model"] = _ask(stdout, stdin, "Model", default.get("model") or DEFAULT_PROVIDER_MODEL.get(provider, "custom"))
+        default_family = _default_provider_family(default)
+        family = _provider_family_value(_ask(stdout, stdin, "Provider type", default_family), default_family)
+        family_defaults = _provider_family_defaults(family)
+        seat["provider"] = family_defaults["provider"]
+        seat["transport"] = family_defaults["transport"]
+        _write_model_effort_refresh_gate(stdout, family)
+        model_default = default.get("model") if family == default_family else family_defaults["model"]
+        effort_default = default.get("reasoning_effort") if family == default_family else family_defaults["reasoning_effort"]
+        seat["model"] = _ask(stdout, stdin, "Model", model_default or family_defaults["model"])
         seat["reasoning_effort"] = _ask(
             stdout,
             stdin,
             "Reasoning/effort",
-            default.get("reasoning_effort") or DEFAULT_PROVIDER_REASONING.get(provider, "default"),
+            effort_default or family_defaults["reasoning_effort"],
         )
         seat["role"] = _ask(stdout, stdin, "Role", default.get("role") or "independent reviewer")
         seat["required"] = _ask_bool(stdout, stdin, "Required seat", bool(default.get("required", True)))
         seat["enabled"] = _ask_bool(stdout, stdin, "Enabled", bool(default.get("enabled", True)))
-        if seat["transport"] == "claude_k_team_agents" or _ask_bool(stdout, stdin, "Use Claude Team Agents", False):
+        if seat["transport"] == "claude_k_team_agents":
             team_default = default.get("team_agents") or {}
-            seat["transport"] = "claude_k_team_agents"
             seat["team_agents"] = {
                 "enabled": True,
                 "roles": _ask_list(stdout, stdin, "Team Agent roles", team_default.get("roles") or ["source-reader", "skeptic", "recorder"]),
@@ -176,24 +181,95 @@ def _write_intake_intro(stdout: TextIO) -> None:
 
 
 def _ask_language(stdout: TextIO, stdin: TextIO) -> str:
-    stdout.write("English: Choose a language: English, Korean, Chinese, Japanese, Spanish.\n")
-    stdout.write("Korean: 언어를 선택해주세요: 영어, 한국어, 중국어, 일본어, 스페인어.\n")
-    stdout.write("Chinese: 请选择语言: 英语, 韩语, 中文, 日语, 西班牙语.\n")
-    stdout.write("Japanese: 言語を選んでください: 英語, 韓国語, 中国語, 日本語, スペイン語.\n")
-    stdout.write("Spanish: Elige un idioma: inglés, coreano, chino, japonés, español.\n")
+    stdout.write("English: Choose a language:\n- English\n- Korean\n- Chinese\n- Japanese\n- Spanish\n")
+    stdout.write("Korean: 언어를 선택해주세요:\n- 영어\n- 한국어\n- 중국어\n- 일본어\n- 스페인어\n")
+    stdout.write("Chinese: 请选择语言:\n- 英语\n- 韩语\n- 中文\n- 日语\n- 西班牙语\n")
+    stdout.write("Japanese: 言語を選んでください:\n- 英語\n- 韓国語\n- 中国語\n- 日本語\n- スペイン語\n")
+    stdout.write("Spanish: Elige un idioma:\n- inglés\n- coreano\n- chino\n- japonés\n- español\n")
     return _language_value(_ask(stdout, stdin, "Language", "English"), "English")
 
 
 def _write_provider_options(stdout: TextIO) -> None:
     stdout.write(
-        "Before choosing exact models, refresh current model/effort options from official provider docs or CLI discovery.\n"
-        "Show a short practical shortlist, not every model.\n"
-        "Provider examples, verified later by auth/capability checks:\n"
-        "- claude: haiku/sonnet/opus-style models; effort low/medium/high/xhigh/max; optional Team Agents.\n"
-        "- gpt/codex: gpt-5.5-style Codex seat; effort low/medium/high/xhigh.\n"
-        "- gemini: selectable provider family; live dispatch is placeholder until verified; gemini-latest-style model.\n"
-        "- manual: human answer import.\n"
+        "\nProvider options:\n"
+        "[gpt/codex]\n"
+        "- One OpenAI/Codex CLI seat.\n"
+        "- Good for analysis, code review, implementation planning, and file-output answers.\n\n"
+        "[claude]\n"
+        "- One normal Claude Code seat.\n"
+        "- Good for architecture review, long-context reasoning, and design critique.\n\n"
+        "[claude team agents]\n"
+        "- One Claude Code seat that uses Claude Team Agents internally.\n"
+        "- Claude coordinates its own teammates, they discuss the topic, and the Claude lead returns one final conclusion.\n\n"
+        "[gemini]\n"
+        "- One Gemini CLI seat.\n"
+        "- Good for another independent provider perspective once installed and logged in.\n\n"
+        "Examples:\n"
+        "- Example 1: gpt/codex 1, claude 1, claude team agents 1, gemini 1\n"
+        "- Example 2: gpt/codex 1, claude 1\n"
+        "- Example 3: claude team agents 1, gemini 1\n\n"
+        "Manual import fallback:\n"
+        "- Manual import is not a provider choice.\n"
+        "- Use it only when a human will paste or save outside answers as files.\n"
     )
+
+
+def _write_model_effort_refresh_gate(stdout: TextIO, family: str) -> None:
+    stdout.write(
+        "\n사용 가능한 model과 effort를 최신정보로 검색하겠습니다.\n"
+        "Refresh rule:\n"
+        "- Use official provider docs first.\n"
+        "- Use local CLI discovery when available.\n"
+        "- Show refreshed options only; do not recommend one.\n"
+        "- Keep each provider section structured as bullets.\n\n"
+        "Output format after refresh:\n"
+    )
+    families = [family] if family in INTAKE_PROVIDER_FAMILIES else list(INTAKE_PROVIDER_FAMILIES)
+    for item in families:
+        stdout.write(_model_effort_format_example(item))
+
+
+def _model_effort_format_example(family: str) -> str:
+    if family == "gpt/codex":
+        return (
+            "[gpt/codex]\n"
+            "- model: <refreshed GPT/Codex model 1>\n"
+            "- model: <refreshed GPT/Codex model 2>\n"
+            "- model: <refreshed GPT/Codex model 3>\n"
+            "- effort: <refreshed effort 1>\n"
+            "- effort: <refreshed effort 2>\n"
+            "- effort: <refreshed effort 3>\n\n"
+        )
+    if family == "claude":
+        return (
+            "[claude]\n"
+            "- model: <refreshed Claude Haiku-family option>\n"
+            "- model: <refreshed Claude Sonnet-family option>\n"
+            "- model: <refreshed Claude Opus-family option>\n"
+            "- effort: <refreshed effort 1>\n"
+            "- effort: <refreshed effort 2>\n"
+            "- effort: <refreshed effort 3>\n\n"
+        )
+    if family == "claude team agents":
+        return (
+            "[claude team agents]\n"
+            "- model: <refreshed Claude model for the lead seat>\n"
+            "- effort: <refreshed Claude effort for the lead seat>\n"
+            "- teammate roles: <role 1>\n"
+            "- teammate roles: <role 2>\n"
+            "- teammate roles: <role 3>\n\n"
+        )
+    if family == "gemini":
+        return (
+            "[gemini]\n"
+            "- model: <refreshed Gemini model 1>\n"
+            "- model: <refreshed Gemini model 2>\n"
+            "- model: <refreshed Gemini model 3>\n"
+            "- effort: <refreshed effort 1>\n"
+            "- effort: <refreshed effort 2>\n"
+            "- effort: <refreshed effort 3>\n\n"
+        )
+    return ""
 
 
 def _write_agent_profile_options(stdout: TextIO) -> None:
@@ -210,8 +286,83 @@ def _write_agent_profile_options(stdout: TextIO) -> None:
 
 
 def _ask_brainstorming_mode(stdout: TextIO, stdin: TextIO) -> str:
-    stdout.write("Brainstorming modes: none, light, deep.\n")
+    stdout.write("Brainstorming modes:\n- none\n- light\n- deep\n")
     return _brainstorming_mode_value(_ask(stdout, stdin, "Brainstorming mode", "none"), "none")
+
+
+def _default_provider_family(default: dict[str, Any]) -> str:
+    transport = str(default.get("transport") or "")
+    provider = str(default.get("provider") or "")
+    if transport == "codex_exec_file" or provider == "openai":
+        return "gpt/codex"
+    if transport == "claude_k_team_agents":
+        return "claude team agents"
+    if transport == "claude_k" or provider == "anthropic":
+        return "claude"
+    if transport == "gemini_cli" or provider == "google":
+        return "gemini"
+    return "gpt/codex"
+
+
+def _provider_family_value(value: Any, default: str) -> str:
+    text = str(value).strip().lower() if value is not None else ""
+    if not text:
+        return default
+    aliases = {
+        "gpt": "gpt/codex",
+        "openai": "gpt/codex",
+        "codex": "gpt/codex",
+        "gpt/codex": "gpt/codex",
+        "gpt codex": "gpt/codex",
+        "claude": "claude",
+        "anthropic": "claude",
+        "claude team": "claude team agents",
+        "claude team agents": "claude team agents",
+        "team agents": "claude team agents",
+        "gemini": "gemini",
+        "google": "gemini",
+        "재미나이": "gemini",
+        "지피티": "gpt/codex",
+        "클로드": "claude",
+        "클로드 팀에이전트": "claude team agents",
+        "클로드 팀 에이전트": "claude team agents",
+    }
+    normalized = aliases.get(text)
+    if normalized:
+        return normalized
+    raise ValueError(f"unsupported provider type for intake: {value}")
+
+
+def _provider_family_defaults(family: str) -> dict[str, str]:
+    if family == "gpt/codex":
+        return {
+            "provider": "openai",
+            "transport": "codex_exec_file",
+            "model": DEFAULT_PROVIDER_MODEL["openai"],
+            "reasoning_effort": DEFAULT_PROVIDER_REASONING["openai"],
+        }
+    if family == "claude":
+        return {
+            "provider": "anthropic",
+            "transport": "claude_k",
+            "model": DEFAULT_PROVIDER_MODEL["anthropic"],
+            "reasoning_effort": DEFAULT_PROVIDER_REASONING["anthropic"],
+        }
+    if family == "claude team agents":
+        return {
+            "provider": "anthropic",
+            "transport": "claude_k_team_agents",
+            "model": DEFAULT_PROVIDER_MODEL["anthropic"],
+            "reasoning_effort": DEFAULT_PROVIDER_REASONING["anthropic"],
+        }
+    if family == "gemini":
+        return {
+            "provider": "google",
+            "transport": "gemini_cli",
+            "model": DEFAULT_PROVIDER_MODEL["google"],
+            "reasoning_effort": DEFAULT_PROVIDER_REASONING["google"],
+        }
+    raise ValueError(f"unsupported provider family: {family}")
 
 
 def _rounds_from_answers(answers: dict[str, Any]) -> list[dict[str, str]]:

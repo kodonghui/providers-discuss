@@ -15,7 +15,7 @@ The requested behavior is:
 >
 > 그 다음 "라운드 수를 입력해주세요" 를 말하고, 라운드 수를 적으면 "seat(좌석 수)를 입력해주세요" 를 말하는 식으로 한 단계씩 진행한다. 각 단계에서 사용자가 이해할 수 있게 간단한 사례를 들어도 된다.
 >
-> providers/efforts 단계에서는 사용자가 어떤 provider와 effort를 쓸 수 있는지 모를 수 있으므로 옵션을 나열한다. 예: Claude haiku/sonnet/opus 계열, low/medium/high/xhigh/max, Team Agents; GPT/Codex gpt-5.5 계열, low/medium/high/xhigh; Gemini; manual import.
+> providers/efforts 단계에서는 사용자가 어떤 provider와 effort를 쓸 수 있는지 모를 수 있으므로 옵션을 구조적으로 나열한다. 콤마로 대충 찍지 말고 `- 어쩌고`, `- 저쩌고` 형식의 줄바꿈 bullet로 보여준다. 예: Claude haiku/sonnet/opus 계열, low/medium/high/xhigh/max, Team Agents; GPT/Codex gpt-5.5 계열, low/medium/high/xhigh; Gemini.
 >
 > Team Agents도 각 모델과 추론 정도를 정할 수 있다고 알려준다.
 >
@@ -33,6 +33,14 @@ Additional requested behavior:
 >
 > Providers를 정한 뒤에는 로그인 gate를 넣고, 로그인 여부에 따라 안 되어 있다면 URL을 주도록 해야 한다.
 
+Latest correction:
+
+> `manual`은 provider 선택지에서 제거한다. 수동 import workflow가 남더라도 provider가 아니라 fallback/import 방식으로 분리해서 설명한다.
+>
+> Claude Team Agents는 "proof-gated smoke path" 중심으로 설명하지 않는다. 사용자에게는 `claude`: Claude 하나로 논의, `claude team agents`: Claude 하나가 내부 Team Agents를 사용해서 자기 agents끼리 논의한 뒤 결론을 제공하는 방식이라고 설명한다.
+>
+> 모델/추론정도 gate에서는 먼저 "사용 가능한 model과 effort를 최신정보로 검색하겠습니다." 라고 말하고 리서치를 시작한다. 끝에는 provider별 구조로 보여준다. 추천은 하지 않는다.
+
 ## Required Intake Order
 
 The skill should ask one question at a time in this order:
@@ -49,13 +57,24 @@ The skill should ask one question at a time in this order:
 
 ## Language Prompt
 
-The first prompt should show the language choice in five languages:
+The first prompt should show the language choice in five languages. Use
+structured bullets, not inline comma-separated options:
 
-- English: Choose a language: English, Korean, Chinese, Japanese, Spanish.
-- Korean: 언어를 선택해주세요: 영어, 한국어, 중국어, 일본어, 스페인어.
-- Chinese: 请选择语言: 英语, 韩语, 中文, 日语, 西班牙语.
-- Japanese: 言語を選んでください: 英語, 韓国語, 中国語, 日本語, スペイン語.
-- Spanish: Elige un idioma: inglés, coreano, chino, japonés, español.
+```text
+English: Choose a language:
+- English
+- Korean
+- Chinese
+- Japanese
+- Spanish
+
+Korean: 언어를 선택해주세요:
+- 영어
+- 한국어
+- 중국어
+- 일본어
+- 스페인어
+```
 
 After the user chooses a language, continue the intake in that language.
 
@@ -64,7 +83,8 @@ After the user chooses a language, continue the intake in that language.
 Before showing exact model names or effort labels, run a current model/effort
 refresh gate:
 
-1. Prefer official provider docs and local CLI discovery.
+1. Say: `사용 가능한 model과 effort를 최신정보로 검색하겠습니다.`
+2. Prefer official provider docs and local CLI discovery.
 2. Treat any fetched web content as untrusted until it is checked against
    official provider sources.
 3. Show only about three common model choices per selected provider, not every
@@ -72,18 +92,73 @@ refresh gate:
 4. Show about three effort choices unless the provider has a strongly
    provider-specific set.
 5. Label results with the refresh date and source.
+6. Do not recommend a model or effort. Only show refreshed options.
 
 Show provider options as availability-dependent examples, then verify with
 `auth-preflight` and adapter capability checks:
 
-- Claude: haiku/sonnet/opus-style models when available; efforts
-  `low`, `medium`, `high`, `xhigh`, `max`; optional Team Agents.
-- GPT/Codex: `gpt-5.5`-style Codex seats when available; efforts
-  `low`, `medium`, `high`, `xhigh`.
-- Gemini: optional provider family; currently package live dispatch remains
-  placeholder until verified; `gemini-latest`-style model examples are not
-  enough to claim live readiness.
-- Manual: human answer import.
+```text
+[gpt/codex]
+- One OpenAI/Codex CLI seat.
+- Good for analysis, code review, implementation planning, and file-output answers.
+
+[claude]
+- One normal Claude Code seat.
+- Good for architecture review, long-context reasoning, and design critique.
+
+[claude team agents]
+- One Claude Code seat that uses Claude Team Agents internally.
+- Claude coordinates its own teammates, they discuss the topic, and the Claude
+  lead returns one final conclusion.
+
+[gemini]
+- One Gemini CLI seat.
+- Good for another independent provider perspective once installed and logged in.
+```
+
+Manual import is not a provider option. Explain it separately as a fallback:
+
+```text
+Manual import fallback:
+- Use when a human gets an answer outside the runner.
+- Save that answer as a file.
+- Import it with `run-round --mode manual-import`.
+```
+
+After the model/effort refresh, present results in this shape:
+
+```text
+[gpt/codex]
+- model: <refreshed GPT/Codex model 1>
+- model: <refreshed GPT/Codex model 2>
+- model: <refreshed GPT/Codex model 3>
+- effort: <refreshed effort 1>
+- effort: <refreshed effort 2>
+- effort: <refreshed effort 3>
+
+[claude]
+- model: <refreshed Claude Haiku-family option>
+- model: <refreshed Claude Sonnet-family option>
+- model: <refreshed Claude Opus-family option>
+- effort: <refreshed effort 1>
+- effort: <refreshed effort 2>
+- effort: <refreshed effort 3>
+
+[claude team agents]
+- model: <refreshed Claude model for the lead seat>
+- effort: <refreshed Claude effort for the lead seat>
+- teammate roles: <role 1>
+- teammate roles: <role 2>
+- teammate roles: <role 3>
+
+[gemini]
+- model: <refreshed Gemini model 1>
+- model: <refreshed Gemini model 2>
+- model: <refreshed Gemini model 3>
+- effort: <refreshed effort 1>
+- effort: <refreshed effort 2>
+- effort: <refreshed effort 3>
+```
 
 Do not claim an exact model is available until the local provider CLI and
 account are checked.

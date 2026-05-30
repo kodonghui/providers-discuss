@@ -1,6 +1,6 @@
 ---
 name: providers-discuss
-description: "Use providers-discuss when a user wants to configure, run, inspect, or package a file-backed multi-provider discussion with dynamic rounds, provider seats, manual import, auth preflight, input packs, gates, prompt deltas, and proof-gated Claude Team Agents workflows."
+description: "Use providers-discuss when a user wants to configure, run, inspect, or package a file-backed multi-provider discussion with dynamic rounds, provider seats, manual import fallback, auth preflight, input packs, gates, prompt deltas, and Claude Team Agents workflows."
 ---
 
 # providers-discuss
@@ -20,30 +20,55 @@ proof files, gates, hashes, and orchestrator prompt deltas under a run root.
 - Ask one intake question at a time. After each answer, move to the next
   question. Include short examples because many users will not know provider
   transports, effort levels, or agent profile names.
-- First ask for language. Show the same choice in five languages and then
-  continue in the selected language:
-  `English: Choose a language: English, Korean, Chinese, Japanese, Spanish.`
-  `Korean: 언어를 선택해주세요: 영어, 한국어, 중국어, 일본어, 스페인어.`
-  `Chinese: 请选择语言: 英语, 韩语, 中文, 日语, 西班牙语.`
-  `Japanese: 言語を選んでください: 英語, 韓国語, 中国語, 日本語, スペイン語.`
-  `Spanish: Elige un idioma: inglés, coreano, chino, japonés, español.`
+- First ask for language. Show the same choice in five languages as structured
+  bullets, then continue in the selected language:
+  `English: Choose a language:`
+  `- English`
+  `- Korean`
+  `- Chinese`
+  `- Japanese`
+  `- Spanish`
+  `Korean: 언어를 선택해주세요:`
+  `- 영어`
+  `- 한국어`
+  `- 중국어`
+  `- 일본어`
+  `- 스페인어`
 - Before explaining exact model names or effort labels, run a current
-  model/effort refresh gate. Prefer official provider docs and local CLI
-  discovery, label the refresh date/source, and show about three commonly used
-  model choices and about three effort choices per selected provider. Do not
-  dump every model.
+  model/effort refresh gate. First say exactly:
+  `사용 가능한 model과 effort를 최신정보로 검색하겠습니다.`
+  Then prefer official provider docs and local CLI discovery, label the refresh
+  date/source, and show about three commonly used model choices and about three
+  effort choices per selected provider. Do not dump every model. Do not
+  recommend one.
 - Explain provider options as examples, not guaranteed availability. The
   package must still use `auth-preflight` and adapter capability checks.
-  Current option families:
-  `claude`: haiku/sonnet/opus-style models when available; efforts
-  `low`, `medium`, `high`, `xhigh`, `max`; optional Team Agents with its own
-  teammate roles and effort settings.
-  `gpt/codex`: `gpt-5.5`-style Codex seat when available; efforts
-  `low`, `medium`, `high`, `xhigh`.
-  `gemini`: provider family supported in config/auth surfaces, but public live
-  dispatch remains placeholder until verified; `gemini-latest`-style examples
-  are not proof of readiness.
-  `manual`: human-captured answer import.
+  Always present choices as structured bullets, not comma-separated inline
+  lists:
+  `[gpt/codex]`
+  `- One OpenAI/Codex CLI seat.`
+  `- Good for analysis, code review, implementation planning, and file-output answers.`
+  `[claude]`
+  `- One normal Claude Code seat.`
+  `- Good for architecture review, long-context reasoning, and design critique.`
+  `[claude team agents]`
+  `- One Claude Code seat that uses Claude Team Agents internally.`
+  `- Claude coordinates its own teammates, they discuss the topic, and the Claude lead returns one final conclusion.`
+  `[gemini]`
+  `- One Gemini CLI seat.`
+  `- Good for another independent provider perspective once installed and logged in.`
+  Manual import is not a provider option; describe it separately as a fallback
+  for human-captured answer files.
+  After refresh, use this output shape:
+  `[gpt/codex]`
+  `- model: <refreshed GPT/Codex model 1>`
+  `- model: <refreshed GPT/Codex model 2>`
+  `- model: <refreshed GPT/Codex model 3>`
+  `- effort: <refreshed effort 1>`
+  `- effort: <refreshed effort 2>`
+  `- effort: <refreshed effort 3>`
+  Repeat the same structured shape for `[claude]`, `[claude team agents]`, and
+  `[gemini]`.
 - After providers are selected, run or instruct `providers-discuss
   auth-preflight`. If a required provider is missing or not logged in, show the
   provider-specific login command and, when the provider CLI emits an official
@@ -55,10 +80,8 @@ proof files, gates, hashes, and orchestrator prompt deltas under a run root.
   descriptions and offer `default`. If the user selected one Claude seat and
   one GPT/Codex seat, say for example: "You selected 1 Claude seat and 1
   GPT/Codex seat. Choose an agent profile for each, or choose default."
-  Default means the `balanced-kdh` preset: Codex/System Architect,
-  Claude/Code Reviewer, Gemini/Ideation Catalyst, Manual/Technical Writer, and
-  Team Agents roles for Ideation Catalyst, Research Synthesizer, System
-  Architect, and QA Verifier.
+  Default means the `balanced-kdh` preset for the selected provider seats and
+  Team Agents roles.
 - Treat `brainstorming` as an explicit intake choice. Ask whether the user
   wants no brainstorming, light brainstorming, or deep brainstorming before
   provider rounds. If enabled, keep it as a visible stage in the config or
@@ -76,11 +99,12 @@ proof files, gates, hashes, and orchestrator prompt deltas under a run root.
   roles from explicit catalogs or a config. Normal reports must stay clean:
   show role behavior and compatibility, not source profile ids, local source
   repo paths, tokens, or provider-home files.
-- Use `run-round --mode manual-import` for the stable live workflow. Required
-  seats need explicit `--answer seat_id=/path/to/answer.md` files.
+- Use `run-round --mode manual-import` only as the manual fallback/import
+  workflow. Required seats need explicit `--answer seat_id=/path/to/answer.md`
+  files.
 - Do not call unsupported live adapters as if they are finished. Codex exec-file
-  is structural, Claude Code is smoke-only, Claude Team Agents is smoke/proof
-  gated, and Gemini is a placeholder until the package says otherwise.
+  is structural, Claude Code is smoke-only, and Claude Team Agents must be
+  verified with proof artifacts before claiming real Team Agents evidence.
 - Do not add hooks, cron, daemons, provider-home mutation, hidden browser OAuth
   automation, global wrappers, or token capture.
 

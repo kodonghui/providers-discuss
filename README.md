@@ -15,10 +15,11 @@ by their maturity level below.
 - A local CLI for configuring dynamic rounds and provider seats.
 - A runner that writes observable artifacts under a run directory.
 - A manual/import workflow that works without live provider credentials.
-- A provider adapter shell for Codex, Claude, Claude Team Agents, Gemini, and
-  manual seats.
-- A proof-gated Team Agents workflow that can generate a prompt-only contract
-  and explain proof pass/fail results.
+- A provider adapter shell for Codex, Claude, Claude Team Agents, and Gemini.
+- A manual import fallback for human-captured answers stored as files.
+- A Claude Team Agents workflow where one Claude seat can use internal
+  teammates to discuss the topic and return one lead conclusion; proof reports
+  verify whether that evidence is real.
 - A read-only agent profile catalog gate for assigning prompt-only roles to
   provider seats or Claude Team Agents teammates.
 
@@ -30,8 +31,8 @@ by their maturity level below.
   provider-home raw config.
 - It does not execute BMAD, oh-my-agents, KDH agent framework scripts, or any
   third-party agent runtime from a catalog.
-- It does not currently provide polished live dispatch for Codex, Gemini, or
-  normal multiround Claude Team Agents.
+- It does not currently provide polished live dispatch for Codex or normal
+  multiround Claude Team Agents.
 - It does not treat dry-run previews, fake proof fixtures, or summary-only Team
   Agents output as live provider success.
 
@@ -160,12 +161,16 @@ Examples:
 
 For user-facing setup, follow the staged intake workflow in
 `docs/intake-workflow.md`: language, rounds, seats, providers/efforts, agent
-profiles, topic, brainstorming mode, and input data path.
+profiles, topic, brainstorming mode, and input data path. Present every option
+set as structured sections and bullets, not inline comma-separated lists.
 
 Before asking the user to choose exact provider models or reasoning efforts,
-refresh the current model/effort options from official provider documentation
-or local CLI discovery. Show only a small practical shortlist per selected
-provider, then run `auth-preflight` for the selected seats.
+say `사용 가능한 model과 effort를 최신정보로 검색하겠습니다.`, then refresh
+the current model/effort options from official provider documentation or local
+CLI discovery. Show refreshed options under provider headings such as
+`[gpt/codex]`, `[claude]`, `[claude team agents]`, and `[gemini]`. Do not
+recommend one; just show the available choices and then run `auth-preflight`
+for the selected seats.
 
 ## Agent Profiles
 
@@ -221,7 +226,7 @@ research, or LLM summarization.
 
 | Adapter | Transport | Current maturity | Live dispatch |
 |---|---|---|---|
-| manual_import | manual | live | manual-import |
+| manual_import | manual | fallback | manual-import only; not a provider selection |
 | codex_exec_file | codex_exec_file | structural | not polished public live dispatch |
 | claude_code | claude_k | smoke_only | smoke-claude-k only |
 | claude_team_agents | claude_k_team_agents | smoke_only | smoke-claude-team-agents plus proof verifier |
@@ -247,6 +252,15 @@ JSON, answer, status, and transport proof artifacts. It never copies Gemini
 credential files or API keys into reports.
 
 ## Claude Team Agents
+
+User-facing meaning: choose `claude team agents` when you want one Claude Code
+seat to use Claude's internal Team Agents feature. Claude should coordinate its
+own teammates, have them discuss the topic, and return one final lead
+conclusion.
+
+Implementation meaning: the package still verifies Team Agents evidence with
+smoke/proof artifacts so summary-only delegation is not mistaken for real Team
+Agents work.
 
 Prompt-only path:
 

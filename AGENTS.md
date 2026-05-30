@@ -24,9 +24,9 @@ file-backed discussion runner for comparing multiple AI provider seats.
 - `codex_exec_file`: structural file-output adapter; public live dispatch still
   needs hardening.
 - `claude_k`: smoke-gated Claude Code transport.
-- `claude_k_team_agents`: proof-gated Team Agents smoke path, not normal
-  multiround automation.
-- `gemini_cli`: placeholder/optional until implemented and verified.
+- `claude_k_team_agents`: one Claude Code seat using internal Claude Team
+  Agents; proof artifacts verify that real Team Agents behavior occurred.
+- `gemini_cli`: live headless adapter after local auth-preflight passes.
 
 ## Development Rules
 
@@ -35,6 +35,10 @@ file-backed discussion runner for comparing multiple AI provider seats.
 - At the start of a discussion intake, ask the user to choose the conversation
   language first. Supported intake languages are English, Korean, Chinese,
   Japanese, and Spanish; after the choice, continue in the selected language.
+- Present intake choices as structured sections and bullets, not inline
+  comma-separated option lists.
+- Manual import is not a provider selection. Keep it as a fallback/import
+  workflow for human-captured answer files.
 - Keep configs and examples free of private paths, OAuth tokens, cookies,
   provider-home config bodies, browser state, and shell history.
 - Update README maturity claims together with adapter capability changes.
