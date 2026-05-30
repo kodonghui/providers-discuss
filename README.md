@@ -163,6 +163,11 @@ For user-facing setup, follow the staged intake workflow in
 `docs/intake-workflow.md`: language, rounds, seats, providers/efforts, agent
 profiles, topic, brainstorming mode, and input data path. Present every option
 set as structured sections and bullets, not inline comma-separated lists.
+Immediately after language selection, explain the remaining setup order:
+round count, seat count, provider type, model, reasoning effort, auth check,
+agent profile/default, topic, brainstorming, and input data path or input pack.
+The round gate must say that any positive round count from 1 to N is allowed;
+the default of 3 is not a limit.
 
 Before asking the user to choose exact provider models or reasoning efforts,
 say `사용 가능한 model과 effort를 최신정보로 검색하겠습니다.`, then refresh
@@ -170,7 +175,8 @@ the current model/effort options from official provider documentation or local
 CLI discovery. Show refreshed options under provider headings such as
 `[gpt/codex]`, `[claude]`, `[claude team agents]`, and `[gemini]`. Do not
 recommend one; just show the available choices and then run `auth-preflight`
-for the selected seats.
+for the selected seats. Do not show manual import in the provider/model/effort
+choice screens; keep it only as a separate fallback/import workflow.
 
 ## Agent Profiles
 

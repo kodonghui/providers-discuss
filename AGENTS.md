@@ -35,10 +35,15 @@ file-backed discussion runner for comparing multiple AI provider seats.
 - At the start of a discussion intake, ask the user to choose the conversation
   language first. Supported intake languages are English, Korean, Chinese,
   Japanese, and Spanish; after the choice, continue in the selected language.
+- Immediately after language selection, show the remaining setup order before
+  asking for round count.
+- The round-count prompt must say that 1 to N rounds are possible; the default
+  of 3 is not a limit.
 - Present intake choices as structured sections and bullets, not inline
   comma-separated option lists.
 - Manual import is not a provider selection. Keep it as a fallback/import
-  workflow for human-captured answer files.
+  workflow for human-captured answer files, and do not mention it during
+  provider/model/effort selection.
 - Keep configs and examples free of private paths, OAuth tokens, cookies,
   provider-home config bodies, browser state, and shell history.
 - Update README maturity claims together with adapter capability changes.

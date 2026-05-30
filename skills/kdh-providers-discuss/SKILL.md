@@ -14,6 +14,12 @@ Use it exactly like `providers-discuss`:
   brainstorming mode, and input data path.
 - Ask one question at a time. First ask for language in English, Korean,
   Chinese, Japanese, and Spanish, then continue in the selected language.
+- Immediately after language selection, show the remaining setup sequence as
+  structured bullets: round count, seat count, provider type, model, reasoning
+  effort, auth check, agent profile/default, topic, brainstorming, and input
+  data path or input pack.
+- At the round-count gate, explain that 1 to N rounds are possible. The default
+  of 3 is not a limit.
 - Explain provider options with structured bullets, not comma-separated inline
   lists:
   `[gpt/codex]`
@@ -25,7 +31,9 @@ Use it exactly like `providers-discuss`:
   teammates discuss the topic and the Claude lead returns one final conclusion.`
   `[gemini]`
   `- One Gemini CLI seat.`
-  Manual import is not a provider option; describe it separately as a fallback.
+  Do not mention manual import in provider/model/effort choice screens. Manual
+  import is not a provider option; describe it only as a separate fallback when
+  the user asks for manual import.
 - Before naming exact models or efforts, first say:
   `사용 가능한 model과 effort를 최신정보로 검색하겠습니다.`
   Then refresh current model/effort options from official provider sources or

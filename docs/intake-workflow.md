@@ -55,6 +55,30 @@ The skill should ask one question at a time in this order:
 8. Brainstorming mode.
 9. Input data path.
 
+Immediately after the language choice, show the remaining setup sequence before
+asking for round count:
+
+```text
+providers-discuss setup will continue in this order:
+- round count
+- seat count
+- provider type for each seat
+- model for each provider
+- reasoning effort for each provider
+- provider login/auth check
+- agent profile or default for each seat
+- topic/objective
+- brainstorming mode
+- input data path or input pack
+```
+
+The round-count gate must explicitly say:
+
+```text
+Round count can be any positive integer from 1 to N. Default is 3, but it is
+not a limit.
+```
+
 ## Language Prompt
 
 The first prompt should show the language choice in five languages. Use
@@ -123,6 +147,23 @@ Manual import fallback:
 - Use when a human gets an answer outside the runner.
 - Save that answer as a file.
 - Import it with `run-round --mode manual-import`.
+```
+
+Do not show the manual import fallback during the provider/model/effort choice
+screens. Keep provider choices limited to:
+
+```text
+[gpt/codex]
+- ...
+
+[claude]
+- ...
+
+[claude team agents]
+- ...
+
+[gemini]
+- ...
 ```
 
 After the model/effort refresh, present results in this shape:

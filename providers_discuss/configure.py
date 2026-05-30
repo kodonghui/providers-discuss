@@ -105,8 +105,9 @@ def configure_from_answers(answers: dict[str, Any]) -> dict[str, Any]:
 def configure_interactive(stdin: TextIO = sys.stdin, stdout: TextIO = sys.stdout) -> dict[str, Any]:
     defaults = example_public_config()
     answers: dict[str, Any] = {}
-    _write_intake_intro(stdout)
     answers["language"] = _ask_language(stdout, stdin)
+    _write_setup_sequence(stdout)
+    stdout.write("\nRound count can be any positive integer from 1 to N. Default is 3, but it is not a limit.\n")
     answers["round_count"] = _ask_int(stdout, stdin, "Round count", len(defaults["rounds"]))
     stdout.write("\nSeat count means how many independent provider voices you want.\n")
     seat_count = _ask_int(stdout, stdin, "Seat count", len([seat for seat in defaults["seats"] if seat.get("enabled", True) is not False]))
@@ -165,18 +166,19 @@ def configure_interactive(stdin: TextIO = sys.stdin, stdout: TextIO = sys.stdout
     return configure_from_answers(answers)
 
 
-def _write_intake_intro(stdout: TextIO) -> None:
+def _write_setup_sequence(stdout: TextIO) -> None:
     stdout.write(
-        "providers-discuss setup needs these choices in order:\n"
-        "1. language\n"
-        "2. round count\n"
-        "3. seat count\n"
-        "4. provider/model/effort per seat\n"
-        "5. login/auth preflight for selected providers\n"
-        "6. agent profiles or default\n"
-        "7. topic/objective\n"
-        "8. brainstorming mode\n"
-        "9. input data path\n\n"
+        "\nproviders-discuss setup will continue in this order:\n"
+        "- round count\n"
+        "- seat count\n"
+        "- provider type for each seat\n"
+        "- model for each provider\n"
+        "- reasoning effort for each provider\n"
+        "- provider login/auth check\n"
+        "- agent profile or default for each seat\n"
+        "- topic/objective\n"
+        "- brainstorming mode\n"
+        "- input data path or input pack\n\n"
     )
 
 
@@ -208,9 +210,6 @@ def _write_provider_options(stdout: TextIO) -> None:
         "- Example 1: gpt/codex 1, claude 1, claude team agents 1, gemini 1\n"
         "- Example 2: gpt/codex 1, claude 1\n"
         "- Example 3: claude team agents 1, gemini 1\n\n"
-        "Manual import fallback:\n"
-        "- Manual import is not a provider choice.\n"
-        "- Use it only when a human will paste or save outside answers as files.\n"
     )
 
 

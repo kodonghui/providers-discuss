@@ -34,6 +34,21 @@ proof files, gates, hashes, and orchestrator prompt deltas under a run root.
   `- 중국어`
   `- 일본어`
   `- 스페인어`
+- Immediately after the language choice, explain the remaining setup order as
+  structured bullets:
+  `providers-discuss setup will continue in this order:`
+  `- round count`
+  `- seat count`
+  `- provider type for each seat`
+  `- model for each provider`
+  `- reasoning effort for each provider`
+  `- provider login/auth check`
+  `- agent profile or default for each seat`
+  `- topic/objective`
+  `- brainstorming mode`
+  `- input data path or input pack`
+- At the round-count gate, say that any positive round count from 1 to N is
+  possible. The default of 3 is only a default, not a limit.
 - Before explaining exact model names or effort labels, run a current
   model/effort refresh gate. First say exactly:
   `사용 가능한 model과 effort를 최신정보로 검색하겠습니다.`
@@ -57,8 +72,9 @@ proof files, gates, hashes, and orchestrator prompt deltas under a run root.
   `[gemini]`
   `- One Gemini CLI seat.`
   `- Good for another independent provider perspective once installed and logged in.`
-  Manual import is not a provider option; describe it separately as a fallback
-  for human-captured answer files.
+  Do not mention manual import in provider/model/effort choice screens. Manual
+  import is not a provider option; describe it only in separate fallback/import
+  workflow docs or when the user explicitly asks for manual import.
   After refresh, use this output shape:
   `[gpt/codex]`
   `- model: <refreshed GPT/Codex model 1>`
