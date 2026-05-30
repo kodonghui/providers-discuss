@@ -41,8 +41,9 @@ Use it exactly like `providers-discuss`:
   provider. Mark exact model names and effort support as availability-dependent
   until auth/capability checks pass. Do not recommend one.
 - After provider selection, run or instruct `providers-discuss auth-preflight`.
-  If login is missing, show the provider login command and relay the official
-  login URL when the provider CLI emits one. Do not capture tokens, cookies,
+  If login is missing, use a URL-first login gate: generate or surface the
+  official provider CLI login URL and show that URL to the user. Do not invent,
+  hardcode, scrape, or store unofficial URLs. Do not capture tokens, cookies,
   provider-home config bodies, browser state, credential files, or shell
   history.
 - At the agent step, list available profiles with short descriptions and offer

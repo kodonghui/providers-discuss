@@ -211,9 +211,28 @@ The report is sanitized. It records readiness classes such as
 `manual_or_skipped`, plus a next action. It must not copy OAuth tokens, cookies,
 provider-home config bodies, or shell history.
 
-If a selected provider is not logged in, use the next action/login hint to
-start the official provider login flow. When the provider CLI emits a login
-URL, show that URL to the user; do not store tokens or provider-home files.
+If a selected provider is not logged in, use a URL-first login gate. Generate
+or surface the official provider CLI login URL and show that URL to the user.
+Do not invent, hardcode, scrape, or store unofficial URLs. Treat login URLs as
+transient login material; do not copy OAuth tokens, cookies, browser state,
+provider-home config bodies, credential file contents, or shell history into
+artifacts.
+
+URL-first examples:
+
+- Codex/GPT:
+  - run `codex login --device-auth`
+  - show the official URL it emits
+  - rerun `auth-preflight` after completion
+- Claude:
+  - run `claude auth login`
+  - show the official URL it emits
+  - rerun `auth-preflight` after completion
+- Gemini:
+  - run `gemini`
+  - complete `/auth` if prompted
+  - show the official URL it emits
+  - rerun `auth-preflight` after completion
 
 ## Input Folder Packaging
 

@@ -211,19 +211,31 @@ or instruct `providers-discuss auth-preflight`.
 
 If a selected provider is not logged in:
 
-- Show the provider-specific login command.
-- If the CLI produces an official login URL, show that URL to the user.
-- If the CLI does not expose a URL without starting an interactive flow, tell
-  the user which command to run to generate the provider's official login URL.
+- Prefer a URL-first flow.
+- Generate or surface the official provider CLI login URL and show that URL to
+  the user.
+- Do not invent, hardcode, scrape, or store unofficial login URLs.
+- If the CLI does not expose a URL without starting an interactive flow, start
+  or instruct the official provider CLI flow whose purpose is to emit/open the
+  URL.
 - Never copy OAuth tokens, cookies, browser state, provider-home config bodies,
   credential file contents, or shell history into artifacts.
 
 Current login gate examples:
 
-- Codex/GPT: `codex login` or `codex login --with-api-key`.
-- Claude: `claude auth login`.
-- Gemini: official Gemini CLI login/auth setup for the installed `gemini`
-  command, then rerun `auth-preflight`.
+- Codex/GPT:
+  - run `codex login --device-auth`
+  - show the official URL it emits
+  - rerun `auth-preflight` after completion
+- Claude:
+  - run `claude auth login`
+  - show the official URL it emits
+  - rerun `auth-preflight` after completion
+- Gemini:
+  - run `gemini`
+  - complete `/auth` if prompted
+  - show the official URL it emits
+  - rerun `auth-preflight` after completion
 
 ## Agent Profile Explanation
 

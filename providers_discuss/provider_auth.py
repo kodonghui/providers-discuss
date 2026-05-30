@@ -33,11 +33,19 @@ DEFAULT_CLI_BY_TRANSPORT = {
 }
 
 LOGIN_HINT_BY_TRANSPORT = {
-    "codex_exec_file": "Run `codex login` or `codex login --with-api-key` using your own credentials; if the CLI emits a login URL, open that URL yourself.",
-    "claude_k": "Run `claude auth login` and complete the official Claude Code login flow; if the CLI emits a login URL, open that URL yourself.",
-    "claude_k_team_agents": "Run `claude auth login` and complete the official Claude Code login flow; if the CLI emits a login URL, open that URL yourself.",
-    "gemini_cli": "Run `gemini` and complete `/auth`, or configure `GEMINI_API_KEY`/Vertex env auth; if the CLI emits a login URL, open that URL yourself.",
+    "codex_exec_file": "URL-first login: generate the official Codex/OpenAI login URL with `codex login --device-auth` and show that URL to the user; after completion, rerun auth-preflight.",
+    "claude_k": "URL-first login: generate the official Claude Code login URL with `claude auth login` and show that URL to the user; after completion, rerun auth-preflight.",
+    "claude_k_team_agents": "URL-first login: generate the official Claude Code login URL with `claude auth login` and show that URL to the user; after completion, rerun auth-preflight.",
+    "gemini_cli": "URL-first login: open the official Gemini CLI auth flow with `gemini`, run `/auth` if needed, and show the emitted login URL to the user; after completion, rerun auth-preflight.",
     "manual": "Manual/import seats do not need provider OAuth.",
+}
+
+LOGIN_URL_ACTION_BY_TRANSPORT = {
+    "codex_exec_file": "Run `codex login --device-auth` and show the official URL it emits.",
+    "claude_k": "Run `claude auth login` and show the official URL it emits.",
+    "claude_k_team_agents": "Run `claude auth login` and show the official URL it emits.",
+    "gemini_cli": "Run `gemini`, complete `/auth` if prompted, and show the official URL it emits.",
+    "manual": "No provider login URL is needed.",
 }
 
 
@@ -131,6 +139,7 @@ def inspect_seat_auth(
     blocker = required and status in {STATUS_MISSING_CLI, STATUS_INSTALLED_NOT_LOGGED_IN}
     optional_issue = (not required) and status in {STATUS_MISSING_CLI, STATUS_INSTALLED_NOT_LOGGED_IN}
     login_hint = login_hint_for_transport(transport)
+    login_url_action = login_url_action_for_transport(transport)
     return {
         "seat_id": seat_id,
         "provider": provider,
@@ -140,6 +149,8 @@ def inspect_seat_auth(
         "cli_path": _safe_cli_path(cli_path),
         "probe": probe,
         "login_hint": login_hint,
+        "login_url_action": login_url_action,
+        "login_url_policy": "URL-first; relay official provider CLI URLs transiently and do not store tokens, cookies, credential files, or provider-home raw config.",
         "blocker": blocker,
         "optional_issue": optional_issue,
         "next_action": _next_action(required=required, status=status, login_hint=login_hint),
@@ -182,11 +193,24 @@ def auth_report_markdown(payload: dict[str, Any]) -> str:
         lines.extend(["", "## Blockers", ""])
         for blocker in payload["blockers"]:
             lines.append(f"- `{blocker['seat_id']}` status `{blocker['status']}`: {blocker['login_hint']}")
+    pending_url_actions = [
+        seat for seat in payload.get("seats", [])
+        if seat.get("status") in {STATUS_MISSING_CLI, STATUS_INSTALLED_NOT_LOGGED_IN}
+    ]
+    if pending_url_actions:
+        lines.extend(["", "## Login URL Gate", ""])
+        lines.append("Use official provider CLI login URLs. Do not paste or store OAuth tokens, cookies, credential files, provider-home raw config, browser state, or shell history.")
+        for seat in pending_url_actions:
+            lines.append(f"- `{seat.get('seat_id', '')}`: {seat.get('login_url_action', seat.get('login_hint', ''))}")
     return "\n".join(lines) + "\n"
 
 
 def login_hint_for_transport(transport: str) -> str:
     return LOGIN_HINT_BY_TRANSPORT.get(transport, "Install and authenticate the configured provider CLI, then rerun auth-preflight.")
+
+
+def login_url_action_for_transport(transport: str) -> str:
+    return LOGIN_URL_ACTION_BY_TRANSPORT.get(transport, "Use the official provider CLI login flow and show the emitted URL to the user.")
 
 
 def _resolve_cli_path(*, seat: dict[str, Any], cli_overrides: dict[str, Path]) -> str:

@@ -86,10 +86,11 @@ proof files, gates, hashes, and orchestrator prompt deltas under a run root.
   Repeat the same structured shape for `[claude]`, `[claude team agents]`, and
   `[gemini]`.
 - After providers are selected, run or instruct `providers-discuss
-  auth-preflight`. If a required provider is missing or not logged in, show the
-  provider-specific login command and, when the provider CLI emits an official
-  login URL, relay that URL. If the CLI only generates the URL interactively,
-  tell the user which command to run. Never capture OAuth tokens, cookies,
+  auth-preflight`. If a required provider is missing or not logged in, use a
+  URL-first login gate: generate or surface the official provider CLI login URL
+  and show that URL to the user. Do not invent, hardcode, scrape, or store
+  unofficial URLs. If the CLI only generates the URL interactively, start or
+  instruct that official flow. Never capture OAuth tokens, cookies,
   provider-home config bodies, browser state, credential file contents, or
   shell history.
 - At the agent profile step, list available profiles with one-line

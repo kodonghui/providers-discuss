@@ -46,6 +46,8 @@ file-backed discussion runner for comparing multiple AI provider seats.
   provider/model/effort selection.
 - Keep configs and examples free of private paths, OAuth tokens, cookies,
   provider-home config bodies, browser state, and shell history.
+- Login gates are URL-first: surface official provider CLI login URLs when
+  possible, but do not invent, hardcode, scrape, or persist unofficial URLs.
 - Update README maturity claims together with adapter capability changes.
 - If a change touches provider execution, add or update a smoke/proof path.
 

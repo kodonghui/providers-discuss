@@ -71,12 +71,14 @@ assert config["brainstorming"]["mode"] == "light"
 assert config["seats"][0]["reasoning_effort"] == "xhigh"
 PY
 PYTHONPATH="${pkg}" python3 - <<'PY'
-from providers_discuss.provider_auth import login_hint_for_transport
+from providers_discuss.provider_auth import login_hint_for_transport, login_url_action_for_transport
 
 for transport in ("codex_exec_file", "claude_k", "claude_k_team_agents", "gemini_cli"):
     hint = login_hint_for_transport(transport).lower()
+    action = login_url_action_for_transport(transport).lower()
     assert "login" in hint
     assert "url" in hint
+    assert "url" in action
 PY
 
 fake_gemini="${tmp}/fake-gemini"
