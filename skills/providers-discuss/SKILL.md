@@ -11,6 +11,43 @@ proof files, gates, hashes, and orchestrator prompt deltas under a run root.
 
 ## Ground Rules
 
+- Begin with the intake gate unless the user already supplied every required
+  choice. Explain that a run needs these decisions, in this order:
+  language, round count, seat count, provider/model/effort per seat, agent
+  profile per selected provider or default, topic, brainstorming mode, and
+  input data path.
+- Ask one intake question at a time. After each answer, move to the next
+  question. Include short examples because many users will not know provider
+  transports, effort levels, or agent profile names.
+- First ask for language. Show the same choice in five languages and then
+  continue in the selected language:
+  `English: Choose a language: English, Korean, Chinese, Japanese, Spanish.`
+  `Korean: 언어를 선택해주세요: 영어, 한국어, 중국어, 일본어, 스페인어.`
+  `Chinese: 请选择语言: 英语, 韩语, 中文, 日语, 西班牙语.`
+  `Japanese: 言語を選んでください: 英語, 韓国語, 中国語, 日本語, スペイン語.`
+  `Spanish: Elige un idioma: inglés, coreano, chino, japonés, español.`
+- Explain provider options as examples, not guaranteed availability. The
+  package must still use `auth-preflight` and adapter capability checks.
+  Current option families:
+  `claude`: haiku/sonnet/opus-style models when available; efforts
+  `low`, `medium`, `high`, `xhigh`, `max`; optional Team Agents with its own
+  teammate roles and effort settings.
+  `gpt/codex`: `gpt-5.5`-style Codex seat when available; efforts
+  `low`, `medium`, `high`, `xhigh`.
+  `gemini`: optional/placeholder until verified; `gemini-latest`-style model.
+  `manual`: human-captured answer import.
+- At the agent profile step, list available profiles with one-line
+  descriptions and offer `default`. If the user selected one Claude seat and
+  one GPT/Codex seat, say for example: "You selected 1 Claude seat and 1
+  GPT/Codex seat. Choose an agent profile for each, or choose default."
+  Default means the `balanced-kdh` preset: Codex/System Architect,
+  Claude/Code Reviewer, Gemini/Ideation Catalyst, Manual/Technical Writer, and
+  Team Agents roles for Ideation Catalyst, Research Synthesizer, System
+  Architect, and QA Verifier.
+- Treat `brainstorming` as an explicit intake choice. Ask whether the user
+  wants no brainstorming, light brainstorming, or deep brainstorming before
+  provider rounds. If enabled, keep it as a visible stage in the config or
+  run notes.
 - Prefer a config-first workflow: `providers-discuss validate-config`, then
   `providers-discuss init --config`.
 - Use `configure` only when the user wants an interactive or answers-JSON setup

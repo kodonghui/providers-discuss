@@ -12,6 +12,8 @@ from .public_config import example_public_config, validate_public_config
 
 CONFIGURE_SCHEMA = "providers-discuss.configure.v1"
 
+SUPPORTED_INTAKE_LANGUAGES = ("English", "Korean", "Chinese", "Japanese", "Spanish")
+SUPPORTED_BRAINSTORMING_MODES = ("none", "light", "deep")
 
 ROUND_MODE_SEQUENCE = ("explore", "challenge", "synthesize", "verify", "decide")
 ROUND_TITLE_BY_MODE = {
@@ -61,7 +63,22 @@ def write_config(path: Path, config: dict[str, Any]) -> None:
 
 def configure_from_answers(answers: dict[str, Any]) -> dict[str, Any]:
     config = example_public_config()
+    config["language"] = {
+        "conversation": _language_value(answers.get("language") or answers.get("conversation_language"), "English"),
+        "supported": list(SUPPORTED_INTAKE_LANGUAGES),
+    }
     config["objective"] = _str_value(answers.get("objective"), config["objective"])
+    brainstorming = answers.get("brainstorming")
+    if isinstance(brainstorming, dict):
+        config["brainstorming"] = {
+            "mode": _brainstorming_mode_value(brainstorming.get("mode"), "none"),
+            "include_as_provider_input": _bool_value(brainstorming.get("include_as_provider_input"), True),
+        }
+    else:
+        config["brainstorming"] = {
+            "mode": _brainstorming_mode_value(answers.get("brainstorming_mode"), "none"),
+            "include_as_provider_input": _bool_value(answers.get("brainstorming_include_as_provider_input"), True),
+        }
     input_cfg = dict(config.get("input") or {})
     input_cfg["source_dirs"] = _list_value(answers.get("source_dirs"), input_cfg.get("source_dirs") or ["./inputs"])
     if "package_strategy" in answers:
@@ -87,15 +104,17 @@ def configure_from_answers(answers: dict[str, Any]) -> dict[str, Any]:
 def configure_interactive(stdin: TextIO = sys.stdin, stdout: TextIO = sys.stdout) -> dict[str, Any]:
     defaults = example_public_config()
     answers: dict[str, Any] = {}
-    answers["objective"] = _ask(stdout, stdin, "Objective/topic", defaults["objective"])
-    answers["source_dirs"] = _ask_list(stdout, stdin, "Input/source dirs", defaults["input"]["source_dirs"])
+    _write_intake_intro(stdout)
+    answers["language"] = _ask_language(stdout, stdin)
     answers["round_count"] = _ask_int(stdout, stdin, "Round count", len(defaults["rounds"]))
+    stdout.write("\nSeat count means how many independent provider voices you want.\n")
     seat_count = _ask_int(stdout, stdin, "Seat count", len([seat for seat in defaults["seats"] if seat.get("enabled", True) is not False]))
     seats: list[dict[str, Any]] = []
     default_seats = defaults["seats"]
     for index in range(seat_count):
         default = default_seats[index] if index < len(default_seats) else {}
         stdout.write(f"\nSeat {index + 1}\n")
+        _write_provider_options(stdout)
         seat: dict[str, Any] = {}
         seat["seat_id"] = _ask(stdout, stdin, "Seat id", default.get("seat_id") or f"seat_{index + 1}")
         seat["provider"] = _ask(stdout, stdin, "Provider (openai/anthropic/google/manual/other)", default.get("provider") or "manual")
@@ -126,6 +145,7 @@ def configure_interactive(stdin: TextIO = sys.stdin, stdout: TextIO = sys.stdout
             }
         seats.append(seat)
     if _ask_bool(stdout, stdin, "Use agent profiles", False):
+        _write_agent_profile_options(stdout)
         catalog_paths = _ask_list(stdout, stdin, "Agent catalog paths", _default_agent_catalog_paths())
         catalogs = _catalogs_value(None, catalog_paths)
         answers["agent_catalogs"] = catalogs
@@ -134,7 +154,61 @@ def configure_interactive(stdin: TextIO = sys.stdin, stdout: TextIO = sys.stdout
         if not use_defaults:
             _ask_profile_assignments(stdout, stdin, seats, catalogs)
     answers["seats"] = seats
+    answers["objective"] = _ask(stdout, stdin, "Objective/topic", defaults["objective"])
+    answers["brainstorming_mode"] = _ask_brainstorming_mode(stdout, stdin)
+    answers["source_dirs"] = _ask_list(stdout, stdin, "Input/source dirs", defaults["input"]["source_dirs"])
     return configure_from_answers(answers)
+
+
+def _write_intake_intro(stdout: TextIO) -> None:
+    stdout.write(
+        "providers-discuss setup needs these choices in order:\n"
+        "1. language\n"
+        "2. round count\n"
+        "3. seat count\n"
+        "4. provider/model/effort per seat\n"
+        "5. agent profiles or default\n"
+        "6. topic/objective\n"
+        "7. brainstorming mode\n"
+        "8. input data path\n\n"
+    )
+
+
+def _ask_language(stdout: TextIO, stdin: TextIO) -> str:
+    stdout.write("English: Choose a language: English, Korean, Chinese, Japanese, Spanish.\n")
+    stdout.write("Korean: 언어를 선택해주세요: 영어, 한국어, 중국어, 일본어, 스페인어.\n")
+    stdout.write("Chinese: 请选择语言: 英语, 韩语, 中文, 日语, 西班牙语.\n")
+    stdout.write("Japanese: 言語を選んでください: 英語, 韓国語, 中国語, 日本語, スペイン語.\n")
+    stdout.write("Spanish: Elige un idioma: inglés, coreano, chino, japonés, español.\n")
+    return _language_value(_ask(stdout, stdin, "Language", "English"), "English")
+
+
+def _write_provider_options(stdout: TextIO) -> None:
+    stdout.write(
+        "Provider examples, verified later by auth/capability checks:\n"
+        "- claude: haiku/sonnet/opus-style models; effort low/medium/high/xhigh/max; optional Team Agents.\n"
+        "- gpt/codex: gpt-5.5-style Codex seat; effort low/medium/high/xhigh.\n"
+        "- gemini: optional placeholder until verified; gemini-latest-style model.\n"
+        "- manual: human answer import.\n"
+    )
+
+
+def _write_agent_profile_options(stdout: TextIO) -> None:
+    stdout.write(
+        "Agent profile options:\n"
+        "- default: balanced-kdh preset.\n"
+        "- kdh-ideation-catalyst: expands early options and reframes the problem.\n"
+        "- kdh-research-synthesizer: synthesizes source material into evidence-backed conclusions.\n"
+        "- kdh-system-architect: turns requirements into architecture and contracts.\n"
+        "- kdh-code-reviewer: reviews code, prompts, and contracts for regressions.\n"
+        "- kdh-qa-verifier: checks reproducibility and artifact support.\n"
+        "- kdh-technical-writer: writes concise user-facing explanations and handoffs.\n"
+    )
+
+
+def _ask_brainstorming_mode(stdout: TextIO, stdin: TextIO) -> str:
+    stdout.write("Brainstorming modes: none, light, deep.\n")
+    return _brainstorming_mode_value(_ask(stdout, stdin, "Brainstorming mode", "none"), "none")
 
 
 def _rounds_from_answers(answers: dict[str, Any]) -> list[dict[str, str]]:
@@ -255,6 +329,50 @@ def _ask_bool(stdout: TextIO, stdin: TextIO, label: str, default: bool) -> bool:
 def _str_value(value: Any, default: str) -> str:
     text = str(value).strip() if value is not None else ""
     return text or str(default)
+
+
+def _language_value(value: Any, default: str) -> str:
+    aliases = {
+        "en": "English",
+        "english": "English",
+        "영어": "English",
+        "ko": "Korean",
+        "kor": "Korean",
+        "korean": "Korean",
+        "한국어": "Korean",
+        "zh": "Chinese",
+        "cn": "Chinese",
+        "chinese": "Chinese",
+        "中文": "Chinese",
+        "중국어": "Chinese",
+        "ja": "Japanese",
+        "jp": "Japanese",
+        "japanese": "Japanese",
+        "日本語": "Japanese",
+        "일본어": "Japanese",
+        "es": "Spanish",
+        "spanish": "Spanish",
+        "español": "Spanish",
+        "스페인어": "Spanish",
+    }
+    text = str(value).strip() if value is not None else ""
+    if not text:
+        return default
+    normalized = aliases.get(text.lower()) or aliases.get(text)
+    if normalized:
+        return normalized
+    if text in SUPPORTED_INTAKE_LANGUAGES:
+        return text
+    raise ValueError(f"unsupported language: {value}")
+
+
+def _brainstorming_mode_value(value: Any, default: str) -> str:
+    text = str(value).strip().lower() if value is not None else ""
+    if not text:
+        return default
+    if text not in SUPPORTED_BRAINSTORMING_MODES:
+        raise ValueError(f"unsupported brainstorming mode: {value}")
+    return text
 
 
 def _list_value(value: Any, default: list[str]) -> list[str]:

@@ -35,7 +35,15 @@ SUPPORTED_PROVIDERS = {
 def example_public_config() -> dict[str, Any]:
     return {
         "schema": PUBLIC_CONFIG_SCHEMA,
+        "language": {
+            "conversation": "English",
+            "supported": ["English", "Korean", "Chinese", "Japanese", "Spanish"],
+        },
         "objective": "Replace this with the provider discussion objective.",
+        "brainstorming": {
+            "mode": "none",
+            "include_as_provider_input": True,
+        },
         "input": {
             "source_dirs": ["./inputs"],
             "package_strategy": "orchestrator_reads_sources_and_builds_input_pack",

@@ -35,6 +35,41 @@ for config in "${pkg}"/examples/*.config.json; do
   "${cmd}" validate-config "${config}" --json >/dev/null
 done
 
+cat > "${tmp}/configure-answers.json" <<'EOF'
+{
+  "language": "Korean",
+  "round_count": 2,
+  "brainstorming_mode": "light",
+  "objective": "Smoke configure intake fields.",
+  "source_dirs": ["./inputs"],
+  "seats": [
+    {
+      "seat_id": "gpt_xhigh",
+      "provider": "openai",
+      "transport": "codex_exec_file",
+      "model": "gpt-5.5",
+      "reasoning_effort": "xhigh",
+      "role": "verify generated config",
+      "required": true
+    }
+  ]
+}
+EOF
+"${cmd}" configure \
+  --answers-json "${tmp}/configure-answers.json" \
+  --output "${tmp}/configured.json" \
+  --json >/dev/null
+python3 - "${tmp}/configured.json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+config = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+assert config["language"]["conversation"] == "Korean"
+assert config["brainstorming"]["mode"] == "light"
+assert config["seats"][0]["reasoning_effort"] == "xhigh"
+PY
+
 profile_report="$("${cmd}" agent-profiles \
   --config "${pkg}/examples/profile-balanced-kdh.config.json" \
   --seat human_reviewer)"

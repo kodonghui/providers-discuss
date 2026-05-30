@@ -139,7 +139,9 @@ bin/providers-discuss validate-config providers-discuss.config.json --json
 
 Each config contains:
 
+- `language`
 - `objective`
+- `brainstorming`
 - `input.source_dirs`
 - `rounds`
 - `seats`
@@ -154,6 +156,10 @@ Examples:
 - `examples/claude-team-agents.config.json`
 - `examples/gemini-optional.config.json`
 - `examples/profile-balanced-kdh.config.json`
+
+For user-facing setup, follow the staged intake workflow in
+`docs/intake-workflow.md`: language, rounds, seats, providers/efforts, agent
+profiles, topic, brainstorming mode, and input data path.
 
 ## Agent Profiles
 

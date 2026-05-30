@@ -52,6 +52,7 @@ SUPPORTED_REASONING_EFFORTS = {
     "max",
     "medium",
     "minimal",
+    "xhigh",
 }
 
 SECRET_KEY_PARTS = (

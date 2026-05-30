@@ -32,6 +32,9 @@ file-backed discussion runner for comparing multiple AI provider seats.
 
 - Prefer Python standard library for the current package.
 - Keep CLI behavior explicit and recoverable.
+- At the start of a discussion intake, ask the user to choose the conversation
+  language first. Supported intake languages are English, Korean, Chinese,
+  Japanese, and Spanish; after the choice, continue in the selected language.
 - Keep configs and examples free of private paths, OAuth tokens, cookies,
   provider-home config bodies, browser state, and shell history.
 - Update README maturity claims together with adapter capability changes.
