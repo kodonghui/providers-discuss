@@ -167,10 +167,11 @@ def _write_intake_intro(stdout: TextIO) -> None:
         "2. round count\n"
         "3. seat count\n"
         "4. provider/model/effort per seat\n"
-        "5. agent profiles or default\n"
-        "6. topic/objective\n"
-        "7. brainstorming mode\n"
-        "8. input data path\n\n"
+        "5. login/auth preflight for selected providers\n"
+        "6. agent profiles or default\n"
+        "7. topic/objective\n"
+        "8. brainstorming mode\n"
+        "9. input data path\n\n"
     )
 
 
@@ -185,10 +186,12 @@ def _ask_language(stdout: TextIO, stdin: TextIO) -> str:
 
 def _write_provider_options(stdout: TextIO) -> None:
     stdout.write(
+        "Before choosing exact models, refresh current model/effort options from official provider docs or CLI discovery.\n"
+        "Show a short practical shortlist, not every model.\n"
         "Provider examples, verified later by auth/capability checks:\n"
         "- claude: haiku/sonnet/opus-style models; effort low/medium/high/xhigh/max; optional Team Agents.\n"
         "- gpt/codex: gpt-5.5-style Codex seat; effort low/medium/high/xhigh.\n"
-        "- gemini: optional placeholder until verified; gemini-latest-style model.\n"
+        "- gemini: selectable provider family; live dispatch is placeholder until verified; gemini-latest-style model.\n"
         "- manual: human answer import.\n"
     )
 

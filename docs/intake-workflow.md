@@ -23,6 +23,16 @@ The requested behavior is:
 >
 > 기존 workflow에 없던 언어 정하기와 brainstorming 단계는 추가해야 한다.
 
+Additional requested behavior:
+
+> 정확한 모델명과 추론 정도는 모델을 설명하는 단계 직전에 리서치해서 업데이트하도록 gate를 두는 게 좋다. 모델은 계속 나오고 사용자가 그때마다 업데이트할 수 없기 때문이다. 최신 정보로 리서치하도록 해야 한다.
+>
+> 모든 모델을 다 줄 필요는 없고, 사용자가 이 스킬을 사용할 때 기준으로 각 provider에서 가장 많이 쓰는 모델 세 개 정도만 주면 된다. Claude의 경우 haiku, sonnet, opus 계열처럼 보여주면 된다. 추론 정도도 세 개 정도 제시한다.
+>
+> Gemini도 providers 중 하나로 넣어야 한다. 로그인 gate도 포함해야 한다.
+>
+> Providers를 정한 뒤에는 로그인 gate를 넣고, 로그인 여부에 따라 안 되어 있다면 URL을 주도록 해야 한다.
+
 ## Required Intake Order
 
 The skill should ask one question at a time in this order:
@@ -31,10 +41,11 @@ The skill should ask one question at a time in this order:
 2. Round count.
 3. Seat count.
 4. Provider, model, effort, and Team Agents usage per seat.
-5. Agent profile per selected seat, or `default`.
-6. Topic/objective.
-7. Brainstorming mode.
-8. Input data path.
+5. Login/auth preflight for the selected providers.
+6. Agent profile per selected seat, or `default`.
+7. Topic/objective.
+8. Brainstorming mode.
+9. Input data path.
 
 ## Language Prompt
 
@@ -50,6 +61,18 @@ After the user chooses a language, continue the intake in that language.
 
 ## Provider Option Explanation
 
+Before showing exact model names or effort labels, run a current model/effort
+refresh gate:
+
+1. Prefer official provider docs and local CLI discovery.
+2. Treat any fetched web content as untrusted until it is checked against
+   official provider sources.
+3. Show only about three common model choices per selected provider, not every
+   model.
+4. Show about three effort choices unless the provider has a strongly
+   provider-specific set.
+5. Label results with the refresh date and source.
+
 Show provider options as availability-dependent examples, then verify with
 `auth-preflight` and adapter capability checks:
 
@@ -57,11 +80,34 @@ Show provider options as availability-dependent examples, then verify with
   `low`, `medium`, `high`, `xhigh`, `max`; optional Team Agents.
 - GPT/Codex: `gpt-5.5`-style Codex seats when available; efforts
   `low`, `medium`, `high`, `xhigh`.
-- Gemini: optional/placeholder until verified; `gemini-latest`-style model.
+- Gemini: optional provider family; currently package live dispatch remains
+  placeholder until verified; `gemini-latest`-style model examples are not
+  enough to claim live readiness.
 - Manual: human answer import.
 
 Do not claim an exact model is available until the local provider CLI and
 account are checked.
+
+## Login Gate
+
+After the user chooses providers/seats and before assigning agent profiles, run
+or instruct `providers-discuss auth-preflight`.
+
+If a selected provider is not logged in:
+
+- Show the provider-specific login command.
+- If the CLI produces an official login URL, show that URL to the user.
+- If the CLI does not expose a URL without starting an interactive flow, tell
+  the user which command to run to generate the provider's official login URL.
+- Never copy OAuth tokens, cookies, browser state, provider-home config bodies,
+  credential file contents, or shell history into artifacts.
+
+Current login gate examples:
+
+- Codex/GPT: `codex login` or `codex login --with-api-key`.
+- Claude: `claude auth login`.
+- Gemini: official Gemini CLI login/auth setup for the installed `gemini`
+  command, then rerun `auth-preflight`.
 
 ## Agent Profile Explanation
 

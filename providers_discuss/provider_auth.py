@@ -33,10 +33,10 @@ DEFAULT_CLI_BY_TRANSPORT = {
 }
 
 LOGIN_HINT_BY_TRANSPORT = {
-    "codex_exec_file": "Run `codex login` or `codex login --with-api-key` using your own credentials.",
-    "claude_k": "Run `claude auth login` and complete the official Claude Code login flow.",
-    "claude_k_team_agents": "Run `claude auth login` and complete the official Claude Code login flow.",
-    "gemini_cli": "Run the official Gemini CLI login/auth setup for this user, then rerun auth-preflight.",
+    "codex_exec_file": "Run `codex login` or `codex login --with-api-key`; if the CLI prints a login URL, open it and finish the official flow.",
+    "claude_k": "Run `claude auth login`; if the CLI prints a login URL, open it and finish the official Claude Code flow.",
+    "claude_k_team_agents": "Run `claude auth login`; if the CLI prints a login URL, open it and finish the official Claude Code flow.",
+    "gemini_cli": "Run the official Gemini CLI login/auth command for this user; if it prints a login URL, open it, then rerun auth-preflight.",
     "manual": "Manual/import seats do not need provider OAuth.",
 }
 

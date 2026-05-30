@@ -15,7 +15,8 @@ proof files, gates, hashes, and orchestrator prompt deltas under a run root.
   choice. Explain that a run needs these decisions, in this order:
   language, round count, seat count, provider/model/effort per seat, agent
   profile per selected provider or default, topic, brainstorming mode, and
-  input data path.
+  input data path. Run the login/auth gate after providers are selected and
+  before agent profile assignment.
 - Ask one intake question at a time. After each answer, move to the next
   question. Include short examples because many users will not know provider
   transports, effort levels, or agent profile names.
@@ -26,6 +27,11 @@ proof files, gates, hashes, and orchestrator prompt deltas under a run root.
   `Chinese: 请选择语言: 英语, 韩语, 中文, 日语, 西班牙语.`
   `Japanese: 言語を選んでください: 英語, 韓国語, 中国語, 日本語, スペイン語.`
   `Spanish: Elige un idioma: inglés, coreano, chino, japonés, español.`
+- Before explaining exact model names or effort labels, run a current
+  model/effort refresh gate. Prefer official provider docs and local CLI
+  discovery, label the refresh date/source, and show about three commonly used
+  model choices and about three effort choices per selected provider. Do not
+  dump every model.
 - Explain provider options as examples, not guaranteed availability. The
   package must still use `auth-preflight` and adapter capability checks.
   Current option families:
@@ -34,8 +40,17 @@ proof files, gates, hashes, and orchestrator prompt deltas under a run root.
   teammate roles and effort settings.
   `gpt/codex`: `gpt-5.5`-style Codex seat when available; efforts
   `low`, `medium`, `high`, `xhigh`.
-  `gemini`: optional/placeholder until verified; `gemini-latest`-style model.
+  `gemini`: provider family supported in config/auth surfaces, but public live
+  dispatch remains placeholder until verified; `gemini-latest`-style examples
+  are not proof of readiness.
   `manual`: human-captured answer import.
+- After providers are selected, run or instruct `providers-discuss
+  auth-preflight`. If a required provider is missing or not logged in, show the
+  provider-specific login command and, when the provider CLI emits an official
+  login URL, relay that URL. If the CLI only generates the URL interactively,
+  tell the user which command to run. Never capture OAuth tokens, cookies,
+  provider-home config bodies, browser state, credential file contents, or
+  shell history.
 - At the agent profile step, list available profiles with one-line
   descriptions and offer `default`. If the user selected one Claude seat and
   one GPT/Codex seat, say for example: "You selected 1 Claude seat and 1

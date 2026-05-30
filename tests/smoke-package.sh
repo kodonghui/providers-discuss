@@ -69,6 +69,14 @@ assert config["language"]["conversation"] == "Korean"
 assert config["brainstorming"]["mode"] == "light"
 assert config["seats"][0]["reasoning_effort"] == "xhigh"
 PY
+PYTHONPATH="${pkg}" python3 - <<'PY'
+from providers_discuss.provider_auth import login_hint_for_transport
+
+for transport in ("codex_exec_file", "claude_k", "claude_k_team_agents", "gemini_cli"):
+    hint = login_hint_for_transport(transport).lower()
+    assert "login" in hint
+    assert "url" in hint
+PY
 
 profile_report="$("${cmd}" agent-profiles \
   --config "${pkg}/examples/profile-balanced-kdh.config.json" \

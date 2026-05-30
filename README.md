@@ -161,6 +161,11 @@ For user-facing setup, follow the staged intake workflow in
 `docs/intake-workflow.md`: language, rounds, seats, providers/efforts, agent
 profiles, topic, brainstorming mode, and input data path.
 
+Before asking the user to choose exact provider models or reasoning efforts,
+refresh the current model/effort options from official provider documentation
+or local CLI discovery. Show only a small practical shortlist per selected
+provider, then run `auth-preflight` for the selected seats.
+
 ## Agent Profiles
 
 Agent profiles are prompt-only role contracts. They can shape a provider seat
@@ -193,6 +198,10 @@ The report is sanitized. It records readiness classes such as
 `installed_logged_in`, `installed_not_logged_in`, `missing_cli`, and
 `manual_or_skipped`, plus a next action. It must not copy OAuth tokens, cookies,
 provider-home config bodies, or shell history.
+
+If a selected provider is not logged in, use the next action/login hint to
+start the official provider login flow. When the provider CLI emits a login
+URL, show that URL to the user; do not store tokens or provider-home files.
 
 ## Input Folder Packaging
 
