@@ -104,7 +104,7 @@ def example_public_config() -> dict[str, Any]:
                 "seat_id": "gemini_optional",
                 "provider": "google",
                 "transport": "gemini_cli",
-                "model": "gemini-latest",
+                "model": "auto",
                 "reasoning_effort": "default",
                 "role": "optional third opinion and contradiction finder",
                 "required": False,

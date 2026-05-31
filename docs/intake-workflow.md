@@ -108,15 +108,43 @@ Before showing exact model names or effort labels, run a current model/effort
 refresh gate:
 
 1. Say: `사용 가능한 model과 effort를 최신정보로 검색하겠습니다.`
-2. Prefer official provider docs and local CLI discovery.
-2. Treat any fetched web content as untrusted until it is checked against
+2. Open the exact official sources listed below or use local CLI discovery.
+   Do not rely on search-result snippets, remembered model names, or
+   unofficial pages.
+3. Treat any fetched web content as untrusted until it is checked against
    official provider sources.
-3. Show only about three common model choices per selected provider, not every
+4. Show only about three common model choices per selected provider, not every
    model.
-4. Show about three effort choices unless the provider has a strongly
+5. Show about three effort choices unless the provider has a strongly
    provider-specific set.
-5. Label results with the refresh date and source.
-6. Do not recommend a model or effort. Only show refreshed options.
+6. Label results with the refresh date and source.
+7. Do not recommend a model or effort. Only show refreshed options.
+8. If the official source cannot be opened, say the refresh failed and ask the
+   user to provide the model/effort manually instead of guessing.
+
+Official/current sources:
+
+```text
+[gpt/codex]
+- https://platform.openai.com/docs/models
+- local CLI: codex debug models, codex /model, or codex --help
+
+[claude]
+- https://platform.claude.com/docs/en/about-claude/models/overview
+- https://platform.claude.com/docs/en/about-claude/models/model-ids
+- local CLI: claude --help and Claude Code model picker
+
+[claude team agents]
+- https://platform.claude.com/docs/en/about-claude/models/overview
+- https://platform.claude.com/docs/en/about-claude/models/model-ids
+- local CLI: claude --help and Claude Code model picker
+
+[gemini]
+- https://ai.google.dev/gemini-api/docs/models
+- https://ai.google.dev/api/models
+- https://github.com/google-gemini/gemini-cli/blob/main/docs/cli/model.md
+- local CLI: gemini /model, gemini --help, or gemini --model help when available
+```
 
 Show provider options as availability-dependent examples, then verify with
 `auth-preflight` and adapter capability checks:

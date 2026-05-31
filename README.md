@@ -171,12 +171,34 @@ the default of 3 is not a limit.
 
 Before asking the user to choose exact provider models or reasoning efforts,
 say `사용 가능한 model과 effort를 최신정보로 검색하겠습니다.`, then refresh
-the current model/effort options from official provider documentation or local
-CLI discovery. Show refreshed options under provider headings such as
-`[gpt/codex]`, `[claude]`, `[claude team agents]`, and `[gemini]`. Do not
+the current model/effort options from the exact official provider sources or
+local CLI discovery. Do not rely on search-result snippets, remembered model
+names, or unofficial pages. Show refreshed options under provider headings such
+as `[gpt/codex]`, `[claude]`, `[claude team agents]`, and `[gemini]`. Do not
 recommend one; just show the available choices and then run `auth-preflight`
-for the selected seats. Do not show manual import in the provider/model/effort
-choice screens; keep it only as a separate fallback/import workflow.
+for the selected seats. If the official source cannot be opened, say the
+refresh failed and ask the user to provide the model/effort manually instead of
+guessing. Do not show manual import in the provider/model/effort choice
+screens; keep it only as a separate fallback/import workflow.
+
+Official/current model sources:
+
+- `[gpt/codex]`
+  - `https://platform.openai.com/docs/models`
+  - local CLI: `codex debug models`, `codex /model`, or `codex --help`
+- `[claude]`
+  - `https://platform.claude.com/docs/en/about-claude/models/overview`
+  - `https://platform.claude.com/docs/en/about-claude/models/model-ids`
+  - local CLI: `claude --help` and Claude Code model picker
+- `[claude team agents]`
+  - `https://platform.claude.com/docs/en/about-claude/models/overview`
+  - `https://platform.claude.com/docs/en/about-claude/models/model-ids`
+  - local CLI: `claude --help` and Claude Code model picker
+- `[gemini]`
+  - `https://ai.google.dev/gemini-api/docs/models`
+  - `https://ai.google.dev/api/models`
+  - `https://github.com/google-gemini/gemini-cli/blob/main/docs/cli/model.md`
+  - local CLI: `gemini /model`, `gemini --help`, or `gemini --model help` when available
 
 ## Agent Profiles
 

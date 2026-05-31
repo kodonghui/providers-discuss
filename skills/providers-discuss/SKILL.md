@@ -52,10 +52,30 @@ proof files, gates, hashes, and orchestrator prompt deltas under a run root.
 - Before explaining exact model names or effort labels, run a current
   model/effort refresh gate. First say exactly:
   `사용 가능한 model과 effort를 최신정보로 검색하겠습니다.`
-  Then prefer official provider docs and local CLI discovery, label the refresh
-  date/source, and show about three commonly used model choices and about three
-  effort choices per selected provider. Do not dump every model. Do not
-  recommend one.
+  Then open the exact official sources below or use local CLI discovery; do not
+  rely on search-result snippets, remembered model names, or unofficial blog
+  posts. Label the refresh date/source, and show about three commonly used
+  model choices and about three effort choices per selected provider. Do not
+  dump every model. Do not recommend one. If the official source cannot be
+  opened, say the refresh failed and ask the user to provide the model/effort
+  manually instead of guessing.
+  Official/current sources:
+  `[gpt/codex]`
+  `- https://platform.openai.com/docs/models`
+  `- local CLI: codex debug models, codex /model, or codex --help`
+  `[claude]`
+  `- https://platform.claude.com/docs/en/about-claude/models/overview`
+  `- https://platform.claude.com/docs/en/about-claude/models/model-ids`
+  `- local CLI: claude --help and Claude Code model picker`
+  `[claude team agents]`
+  `- https://platform.claude.com/docs/en/about-claude/models/overview`
+  `- https://platform.claude.com/docs/en/about-claude/models/model-ids`
+  `- local CLI: claude --help and Claude Code model picker`
+  `[gemini]`
+  `- https://ai.google.dev/gemini-api/docs/models`
+  `- https://ai.google.dev/api/models`
+  `- https://github.com/google-gemini/gemini-cli/blob/main/docs/cli/model.md`
+  `- local CLI: gemini /model, gemini --help, or gemini --model help when available`
 - Explain provider options as examples, not guaranteed availability. The
   package must still use `auth-preflight` and adapter capability checks.
   Always present choices as structured bullets, not comma-separated inline

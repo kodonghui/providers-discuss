@@ -16,6 +16,29 @@ SUPPORTED_INTAKE_LANGUAGES = ("English", "Korean", "Chinese", "Japanese", "Spani
 SUPPORTED_BRAINSTORMING_MODES = ("none", "light", "deep")
 INTAKE_PROVIDER_FAMILIES = ("gpt/codex", "claude", "claude team agents", "gemini")
 
+OFFICIAL_MODEL_SOURCES_BY_FAMILY = {
+    "gpt/codex": [
+        "https://platform.openai.com/docs/models",
+        "local CLI: codex debug models, codex /model, or codex --help",
+    ],
+    "claude": [
+        "https://platform.claude.com/docs/en/about-claude/models/overview",
+        "https://platform.claude.com/docs/en/about-claude/models/model-ids",
+        "local CLI: claude --help and Claude Code model picker",
+    ],
+    "claude team agents": [
+        "https://platform.claude.com/docs/en/about-claude/models/overview",
+        "https://platform.claude.com/docs/en/about-claude/models/model-ids",
+        "local CLI: claude --help and Claude Code model picker",
+    ],
+    "gemini": [
+        "https://ai.google.dev/gemini-api/docs/models",
+        "https://ai.google.dev/api/models",
+        "https://github.com/google-gemini/gemini-cli/blob/main/docs/cli/model.md",
+        "local CLI: gemini /model, gemini --help, or gemini --model help when available",
+    ],
+}
+
 ROUND_MODE_SEQUENCE = ("explore", "challenge", "synthesize", "verify", "decide")
 ROUND_TITLE_BY_MODE = {
     "explore": "Independent proposals and risk candidates",
@@ -36,7 +59,7 @@ DEFAULT_PROVIDER_TRANSPORT = {
 DEFAULT_PROVIDER_MODEL = {
     "openai": "gpt-5.5",
     "anthropic": "opus",
-    "google": "gemini-latest",
+    "google": "auto",
     "manual": "manual",
     "other": "custom",
 }
@@ -217,15 +240,37 @@ def _write_model_effort_refresh_gate(stdout: TextIO, family: str) -> None:
     stdout.write(
         "\n사용 가능한 model과 effort를 최신정보로 검색하겠습니다.\n"
         "Refresh rule:\n"
-        "- Use official provider docs first.\n"
-        "- Use local CLI discovery when available.\n"
+        "- Use the exact official sources below first; do not rely on search-result snippets.\n"
+        "- Use local CLI discovery when available, because CLI accounts can expose a different model menu.\n"
+        "- Do not invent version numbers or reuse old remembered names.\n"
+        "- If the official sources cannot be opened, say refresh failed and ask for a model manually.\n"
         "- Show refreshed options only; do not recommend one.\n"
         "- Keep each provider section structured as bullets.\n\n"
-        "Output format after refresh:\n"
+        "Official/current sources to open before listing exact names:\n"
     )
     families = [family] if family in INTAKE_PROVIDER_FAMILIES else list(INTAKE_PROVIDER_FAMILIES)
     for item in families:
+        stdout.write(f"{_provider_source_heading(item)}\n")
+        for source in OFFICIAL_MODEL_SOURCES_BY_FAMILY.get(item, []):
+            stdout.write(f"- {source}\n")
+    stdout.write(
+        "\n"
+        "Output format after refresh:\n"
+    )
+    for item in families:
         stdout.write(_model_effort_format_example(item))
+
+
+def _provider_source_heading(family: str) -> str:
+    if family == "gpt/codex":
+        return "[gpt/codex sources]"
+    if family == "claude":
+        return "[claude sources]"
+    if family == "claude team agents":
+        return "[claude team agents sources]"
+    if family == "gemini":
+        return "[gemini sources]"
+    return f"[{family} sources]"
 
 
 def _model_effort_format_example(family: str) -> str:

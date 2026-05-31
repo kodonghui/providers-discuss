@@ -21,7 +21,7 @@
   "schema": "providers-discuss.public-config.v1",
   "seats": [
     {
-      "model": "gemini-latest",
+      "model": "auto",
       "provider": "google",
       "reasoning_effort": "default",
       "required": true,

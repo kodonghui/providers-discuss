@@ -48,6 +48,9 @@ file-backed discussion runner for comparing multiple AI provider seats.
   provider-home config bodies, browser state, and shell history.
 - Login gates are URL-first: surface official provider CLI login URLs when
   possible, but do not invent, hardcode, scrape, or persist unofficial URLs.
+- Model/effort gates must use exact official provider source URLs or local CLI
+  discovery. Do not rely on search-result snippets, remembered model names, or
+  unofficial pages, and do not guess exact version numbers when refresh fails.
 - Update README maturity claims together with adapter capability changes.
 - If a change touches provider execution, add or update a smoke/proof path.
 

@@ -36,10 +36,30 @@ Use it exactly like `providers-discuss`:
   the user asks for manual import.
 - Before naming exact models or efforts, first say:
   `사용 가능한 model과 effort를 최신정보로 검색하겠습니다.`
-  Then refresh current model/effort options from official provider sources or
-  local CLI discovery and show only about three common choices per selected
-  provider. Mark exact model names and effort support as availability-dependent
-  until auth/capability checks pass. Do not recommend one.
+  Then refresh current model/effort options from the exact official sources
+  below or local CLI discovery. Do not rely on search-result snippets,
+  remembered model names, or unofficial pages. Show only about three common
+  choices per selected provider. Mark exact model names and effort support as
+  availability-dependent until auth/capability checks pass. Do not recommend
+  one. If the official source cannot be opened, say the refresh failed and ask
+  the user to provide the model/effort manually instead of guessing.
+  Official/current sources:
+  `[gpt/codex]`
+  `- https://platform.openai.com/docs/models`
+  `- local CLI: codex debug models, codex /model, or codex --help`
+  `[claude]`
+  `- https://platform.claude.com/docs/en/about-claude/models/overview`
+  `- https://platform.claude.com/docs/en/about-claude/models/model-ids`
+  `- local CLI: claude --help and Claude Code model picker`
+  `[claude team agents]`
+  `- https://platform.claude.com/docs/en/about-claude/models/overview`
+  `- https://platform.claude.com/docs/en/about-claude/models/model-ids`
+  `- local CLI: claude --help and Claude Code model picker`
+  `[gemini]`
+  `- https://ai.google.dev/gemini-api/docs/models`
+  `- https://ai.google.dev/api/models`
+  `- https://github.com/google-gemini/gemini-cli/blob/main/docs/cli/model.md`
+  `- local CLI: gemini /model, gemini --help, or gemini --model help when available`
 - After provider selection, run or instruct `providers-discuss auth-preflight`.
   If login is missing, use a URL-first login gate: generate or surface the
   official provider CLI login URL and show that URL to the user. Do not invent,

@@ -23,7 +23,7 @@ from .provider_adapters import (
 
 
 COMPLETION_MARKER = "KDH_GEMINI_DONE"
-DEFAULT_GEMINI_MODEL = "gemini-latest"
+DEFAULT_GEMINI_MODEL = "auto"
 
 
 def run_gemini_headless_smoke(
