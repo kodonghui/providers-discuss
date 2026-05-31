@@ -89,6 +89,7 @@ from .provider_adapters import (
     validate_adapter_seat,
     write_dry_run_result,
     write_manual_import_result,
+    write_round_prompt,
 )
 from .public_config import (
     example_public_config,
@@ -219,7 +220,8 @@ def main(argv: list[str] | None = None) -> int:
     smoke_claude.add_argument("--claude-bin", type=Path, required=True)
     smoke_claude.add_argument("--launch-cwd", type=Path, help="trusted workspace cwd for launching Claude; defaults to the run root")
     smoke_claude.add_argument("--auto-trust", action="store_true", help="accept Claude workspace/folder trust prompt for this smoke run")
-    smoke_claude.add_argument("--timeout-seconds", type=int, default=180)
+    smoke_claude.add_argument("--timeout-seconds", type=int, help="override the seat timeout_seconds for this smoke run")
+    smoke_claude.add_argument("--override-reason", default="", help="required when --timeout-seconds changes the configured seat timeout")
     smoke_claude.add_argument("--json", action="store_true")
 
     smoke_team = sub.add_parser("smoke-claude-team-agents")
@@ -234,7 +236,8 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="set CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 for this child Claude process only",
     )
-    smoke_team.add_argument("--timeout-seconds", type=int, default=DEFAULT_PROVIDER_TIMEOUT_SECONDS)
+    smoke_team.add_argument("--timeout-seconds", type=int, help="override the seat timeout_seconds for this smoke run")
+    smoke_team.add_argument("--override-reason", default="", help="required when --timeout-seconds changes the configured seat timeout")
     smoke_team.add_argument(
         "--trigger-mode",
         choices=["prompt_only", "providers_discuss_hook", "global_hook"],
@@ -248,7 +251,8 @@ def main(argv: list[str] | None = None) -> int:
     smoke_gemini.add_argument("--round", required=True)
     smoke_gemini.add_argument("--seat", required=True)
     smoke_gemini.add_argument("--gemini-bin", type=Path, required=True)
-    smoke_gemini.add_argument("--timeout-seconds", type=int, default=DEFAULT_PROVIDER_TIMEOUT_SECONDS)
+    smoke_gemini.add_argument("--timeout-seconds", type=int, help="override the seat timeout_seconds for this smoke run")
+    smoke_gemini.add_argument("--override-reason", default="", help="required when --timeout-seconds changes the configured seat timeout")
     smoke_gemini.add_argument("--json", action="store_true")
 
     team_prompt = sub.add_parser("team-agents-prompt")
@@ -1194,7 +1198,17 @@ def run_round_live_dispatch(base: Path, run: dict[str, Any], spec: dict[str, Any
                 timeout_seconds=effective_timeout_seconds(seat),
             )
         else:
-            result = write_dry_run_result(base=base, run=run, spec=spec, seat=seat)
+            prompt_result = write_round_prompt(base=base, run=run, spec=spec, seat=seat)
+            result = {
+                **prompt_result,
+                "status": "pending",
+                "answer_path": "",
+                "status_path": "",
+                "proof_path": "",
+                "exit_code": None,
+                "failure_classification": FAILURE_UNSUPPORTED_LIVE_DISPATCH,
+                "refs": prompt_result["refs"],
+            }
         results.append(result)
         manifest_lines.append(
             "- round: `{round}` seat: `{seat}` mode: `live-dispatch` status: `{status}` answer: `{answer}` status_path: `{status_path}` proof: `{proof}` failure: `{failure}`".format(
@@ -1207,7 +1221,11 @@ def run_round_live_dispatch(base: Path, run: dict[str, Any], spec: dict[str, Any
                 failure=result["failure_classification"] or "none",
             )
         )
-        event_type = "provider.completed" if result["status"] == "completed" else ("provider.skipped" if result["status"] == "skipped" else "provider.failed")
+        event_type = (
+            "provider.completed"
+            if result["status"] == "completed"
+            else ("provider.skipped" if result["status"] == "skipped" else ("provider.pending" if result["status"] == "pending" else "provider.failed"))
+        )
         append_event(
             base,
             event_type,
@@ -1222,7 +1240,16 @@ def run_round_live_dispatch(base: Path, run: dict[str, Any], spec: dict[str, Any
         )
     (base / "raw-output-manifest.md").write_text("\n".join(manifest_lines) + "\n", encoding="utf-8")
     write_artifact_hash(base, "raw-output-manifest.md")
-    failed_required = [item for item in results if item["required"] and item["status"] != "completed"]
+    unsupported_required = [
+        item
+        for item in results
+        if item["required"] and item["status"] != "completed" and item["failure_classification"] == FAILURE_UNSUPPORTED_LIVE_DISPATCH
+    ]
+    failed_required = [
+        item
+        for item in results
+        if item["required"] and item["status"] != "completed" and item["failure_classification"] != FAILURE_UNSUPPORTED_LIVE_DISPATCH
+    ]
     if failed_required:
         verify = {
             "schema": VERIFY_SCHEMA,
@@ -1253,6 +1280,20 @@ def run_round_live_dispatch(base: Path, run: dict[str, Any], spec: dict[str, Any
         save_run(base, run)
         print(f"round {round_id}: required provider failure", file=sys.stderr)
         return 3
+    if unsupported_required:
+        run["state"] = "round_prompt_ready"
+        run["current_round"] = round_id
+        save_run(base, run)
+        append_event(
+            base,
+            "round.live_dispatch_partial",
+            run_id=run["run_id"],
+            round_id=round_id,
+            pending_seats=[item["seat_id"] for item in unsupported_required],
+            refs=["raw-output-manifest.md"],
+        )
+        print(f"round {round_id}: live dispatch partial; provider answers still needed", file=sys.stderr)
+        return 2
     run["state"] = "round_outputs_collected"
     run["current_round"] = round_id
     save_run(base, run)
@@ -1529,6 +1570,7 @@ def cmd_smoke_claude_k(args: argparse.Namespace) -> int:
         launch_cwd=args.launch_cwd,
         auto_trust=args.auto_trust,
         timeout_seconds=args.timeout_seconds,
+        timeout_override_reason=args.override_reason,
     )
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
@@ -1557,6 +1599,7 @@ def cmd_smoke_claude_team_agents(args: argparse.Namespace) -> int:
         experimental_agent_teams=args.experimental_agent_teams,
         timeout_seconds=args.timeout_seconds,
         trigger_mode=args.trigger_mode,
+        timeout_override_reason=args.override_reason,
     )
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
@@ -1581,7 +1624,7 @@ def cmd_smoke_gemini_headless(args: argparse.Namespace) -> int:
         round_id=args.round,
         seat=seat,
         gemini_bin=args.gemini_bin,
-        timeout_seconds=args.timeout_seconds,
+        timeout_seconds=_effective_smoke_timeout(seat, args.timeout_seconds, args.override_reason),
     )
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
@@ -1589,6 +1632,20 @@ def cmd_smoke_gemini_headless(args: argparse.Namespace) -> int:
         print(f"smoke-gemini-headless: {result['status']}")
         print(f"proof: {result['proof_path']}")
     return 0 if result["status"] == "pass" else 1
+
+
+def _effective_smoke_timeout(seat: dict[str, Any], override: int | None, override_reason: str = "") -> int:
+    selected = effective_timeout_seconds(seat)
+    if override is None:
+        return selected
+    if override < 1:
+        raise ValueError("timeout-seconds must be positive")
+    if override != selected and not override_reason.strip():
+        raise ValueError(
+            "timeout override requires --override-reason; "
+            f"selected timeout_seconds={selected}, requested={override}"
+        )
+    return override
 
 
 def cmd_team_agents_prompt(args: argparse.Namespace) -> int:

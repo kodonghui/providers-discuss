@@ -89,6 +89,10 @@ This is the canonical Codex skill for the `providers-discuss` CLI.
   step until the run finishes or reaches a real blocker.
 - Use `providers-discuss run-round --mode manual-import` for the stable live
   workflow.
+- Treat the selected run-shape gate as binding during execution. Smoke/live
+  commands must use the configured seat model, reasoning effort, permission
+  mode, and timeout unless the user explicitly requests an override and records
+  the reason.
 - Do not call provider CLIs directly to collect official run answers. Do not use
   `claude -p` for Claude Team Agents. Official collection must go through
   `providers-discuss run-round`, a named smoke command, proof report, or

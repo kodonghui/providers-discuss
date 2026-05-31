@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import pty
 import re
@@ -18,6 +19,7 @@ from .provider_adapters import (
     FAILURE_PROVIDER_COMMAND_FAILED,
     FAILURE_TIMEOUT,
     FAILURE_WORKSPACE_TRUST_PROMPT,
+    effective_timeout_seconds,
 )
 
 
@@ -37,10 +39,11 @@ def run_claude_k_smoke(
     claude_bin: Path,
     launch_cwd: Path | None,
     auto_trust: bool,
-    timeout_seconds: int,
+    timeout_seconds: int | None,
+    timeout_override_reason: str = "",
 ) -> dict[str, Any]:
-    if timeout_seconds < 1:
-        raise ValueError("timeout-seconds must be positive")
+    runtime = build_claude_runtime(seat, timeout_seconds=timeout_seconds, timeout_override_reason=timeout_override_reason)
+    effective_timeout = int(runtime["timeout_seconds"]["effective"])
     if not claude_bin.exists():
         raise ValueError(f"claude bin missing: {claude_bin}")
     if not os.access(claude_bin, os.X_OK):
@@ -95,7 +98,8 @@ def run_claude_k_smoke(
         answer_path=answer_path,
         status_path=status_path,
         auto_trust=auto_trust,
-        timeout_seconds=timeout_seconds,
+        timeout_seconds=effective_timeout,
+        extra_env=claude_runtime_env(runtime),
     )
     transcript_path.write_text(raw, encoding="utf-8", errors="replace")
     write_artifact_hash(base, transcript_rel)
@@ -120,8 +124,10 @@ def run_claude_k_smoke(
             marker_in_answer=marker_in_answer,
             auto_trust=auto_trust,
             trust_accepted=trust_accepted,
+            runtime=runtime,
         )
     if status_path.exists():
+        augment_status_with_runtime(status_path, runtime)
         write_artifact_hash(base, status_rel)
 
     proof: dict[str, Any] = {
@@ -132,6 +138,7 @@ def run_claude_k_smoke(
         "status_path": status_rel,
         "completion_marker": COMPLETION_MARKER,
         "launch_cwd": str(launch_cwd),
+        "runtime": claude_runtime_metadata(runtime),
         "workspace_trust_auto_accept_enabled": auto_trust,
         "workspace_trust_auto_accepted": trust_accepted,
         "timed_out": timed_out,
@@ -177,9 +184,77 @@ def run_claude_k_smoke(
     return {
         "status": result["status"],
         "proof_path": proof_rel,
+        "runtime": claude_runtime_metadata(runtime),
         "checks": result["checks"],
         "blockers": result["blockers"],
     }
+
+
+def build_claude_runtime(seat: dict[str, Any], *, timeout_seconds: int | None, timeout_override_reason: str = "") -> dict[str, Any]:
+    execution = seat.get("execution") if isinstance(seat.get("execution"), dict) else {}
+    selected_model = _runtime_text(seat.get("model") or execution.get("model") or DEFAULT_CLAUDE_MODEL)
+    selected_effort = _runtime_text(seat.get("reasoning_effort") or execution.get("effort") or DEFAULT_CLAUDE_EFFORT)
+    selected_permission_mode = _runtime_text(execution.get("permission_mode") or DEFAULT_CLAUDE_PERMISSION_MODE)
+    selected_timeout = effective_timeout_seconds(seat)
+    effective_timeout = timeout_seconds if timeout_seconds is not None else selected_timeout
+    if effective_timeout < 1:
+        raise ValueError("timeout-seconds must be positive")
+    timeout_overridden = timeout_seconds is not None and effective_timeout != selected_timeout
+    reason = timeout_override_reason.strip()
+    if timeout_overridden and not reason:
+        raise ValueError(
+            "timeout override requires --override-reason; "
+            f"selected timeout_seconds={selected_timeout}, requested={effective_timeout}"
+        )
+    return {
+        "model": {"selected": selected_model, "effective": selected_model, "overridden": False, "override_reason": ""},
+        "effort": {"selected": selected_effort, "effective": selected_effort, "overridden": False, "override_reason": ""},
+        "permission_mode": {
+            "selected": selected_permission_mode,
+            "effective": selected_permission_mode,
+            "overridden": False,
+            "override_reason": "",
+        },
+        "timeout_seconds": {
+            "selected": selected_timeout,
+            "effective": effective_timeout,
+            "overridden": timeout_overridden,
+            "override_reason": reason if timeout_overridden else "",
+        },
+    }
+
+
+def claude_runtime_env(runtime: dict[str, Any]) -> dict[str, str]:
+    return {
+        "KDH_PROVIDER_DISCUSS_CLAUDE_MODEL": str(runtime["model"]["effective"]),
+        "KDH_PROVIDER_DISCUSS_CLAUDE_EFFORT": str(runtime["effort"]["effective"]),
+        "KDH_PROVIDER_DISCUSS_CLAUDE_PERMISSION_MODE": str(runtime["permission_mode"]["effective"]),
+    }
+
+
+def claude_runtime_metadata(runtime: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "model": dict(runtime["model"]),
+        "effort": dict(runtime["effort"]),
+        "permission_mode": dict(runtime["permission_mode"]),
+        "timeout_seconds": dict(runtime["timeout_seconds"]),
+    }
+
+
+def augment_status_with_runtime(status_path: Path, runtime: dict[str, Any]) -> None:
+    try:
+        payload = json.loads(status_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return
+    if not isinstance(payload, dict):
+        return
+    payload["runtime"] = claude_runtime_metadata(runtime)
+    write_json(status_path, payload)
+
+
+def _runtime_text(value: Any) -> str:
+    text = str(value or "").strip()
+    return text or "default"
 
 
 def _spawn_pty(
@@ -382,6 +457,7 @@ def _write_fallback_status(
     marker_in_answer: bool,
     auto_trust: bool,
     trust_accepted: bool,
+    runtime: dict[str, Any],
 ) -> None:
     if blocked_reason:
         verdict = "failed"
@@ -420,6 +496,7 @@ def _write_fallback_status(
             "marker_in_answer": marker_in_answer,
             "workspace_trust_auto_accept_enabled": auto_trust,
             "workspace_trust_auto_accepted": trust_accepted,
+            "runtime": claude_runtime_metadata(runtime),
         },
     )
 

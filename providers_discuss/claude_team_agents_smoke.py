@@ -11,7 +11,14 @@ from pathlib import Path
 from typing import Any
 
 from .artifacts import DEFAULT_TEAM_AGENTS_DIRECT_MESSAGE_COUNT, append_event, save_run, utc_now, write_artifact_hash, write_json
-from .claude_smoke import COMPLETION_MARKER, _spawn_pty
+from .claude_smoke import (
+    COMPLETION_MARKER,
+    _spawn_pty,
+    augment_status_with_runtime,
+    build_claude_runtime,
+    claude_runtime_env,
+    claude_runtime_metadata,
+)
 from .proofs import TEAM_AGENTS_PROOF_SCHEMA, validate_team_agents_proof
 from .provider_adapters import FAILURE_PERMISSION_PROMPT, FAILURE_PROOF_FAILED, FAILURE_TIMEOUT, FAILURE_WORKSPACE_TRUST_PROMPT
 
@@ -29,11 +36,12 @@ def run_claude_team_agents_smoke(
     launch_cwd: Path | None,
     auto_trust: bool,
     experimental_agent_teams: bool,
-    timeout_seconds: int,
+    timeout_seconds: int | None,
     trigger_mode: str,
+    timeout_override_reason: str = "",
 ) -> dict[str, Any]:
-    if timeout_seconds < 1:
-        raise ValueError("timeout-seconds must be positive")
+    runtime = build_claude_runtime(seat, timeout_seconds=timeout_seconds, timeout_override_reason=timeout_override_reason)
+    effective_timeout = int(runtime["timeout_seconds"]["effective"])
     if not claude_bin.exists():
         raise ValueError(f"claude bin missing: {claude_bin}")
     if not os.access(claude_bin, os.X_OK):
@@ -53,10 +61,10 @@ def run_claude_team_agents_smoke(
     team_name = f"providers-{round_id.lower()}-{run['run_id']}"
 
     prompt_rel = f"prompts/round-{round_id}/{seat_id}.live-team-agents-smoke.md"
-    answer_rel = f"answers/round-{round_id}/{seat_id}.md"
+    answer_rel = f"answers/round-{round_id}/{seat_id}.team-agents-smoke.md"
     transcript_rel = f"logs/round-{round_id}/{seat_id}.transcript.ansi"
-    status_rel = f"logs/round-{round_id}/{seat_id}.status.json"
-    proof_rel = f"logs/round-{round_id}/{seat_id}.proof.json"
+    status_rel = f"logs/round-{round_id}/{seat_id}.team-agents-smoke.status.json"
+    proof_rel = f"logs/round-{round_id}/{seat_id}.team-agents-smoke.proof.json"
     session_jsonl_dir_rel = f"logs/round-{round_id}/session-jsonl"
     team_state_dir_rel = f"logs/round-{round_id}/team-state"
 
@@ -93,6 +101,7 @@ def run_claude_team_agents_smoke(
     before_tmux_panes = _snapshot_tmux_panes()
     started_epoch = time.time()
     extra_env = {
+        **claude_runtime_env(runtime),
         "KDH_PROVIDER_DISCUSS_TEAM_NAME": team_name,
         "KDH_PROVIDER_DISCUSS_SESSION_JSONL_DIR": str(session_jsonl_dir),
         "KDH_PROVIDER_DISCUSS_TEAM_STATE_DIR": str(team_state_dir),
@@ -117,7 +126,7 @@ def run_claude_team_agents_smoke(
             answer_path=answer_path,
             status_path=status_path,
             auto_trust=auto_trust,
-            timeout_seconds=timeout_seconds,
+            timeout_seconds=effective_timeout,
             extra_env=extra_env,
             drop_env_keys=("TMUX", "TMUX_PANE"),
         )
@@ -157,6 +166,8 @@ def run_claude_team_agents_smoke(
             raw="\n".join([raw, _read_rel_files(base, session_jsonl_rels)]),
         )
         write_json(status_path, status)
+    augment_status_with_runtime(status_path, runtime)
+    status = _load_status(status_path) or status
     write_artifact_hash(base, status_rel)
 
     session_tool_counts = _session_tool_counts(base, session_jsonl_rels, team_name)
@@ -181,6 +192,7 @@ def run_claude_team_agents_smoke(
         launch_cwd=launch_cwd,
         started_at=started_at,
         trigger_mode=trigger_mode,
+        runtime=runtime,
     )
     write_json(proof_path, proof)
     write_artifact_hash(base, proof_rel)
@@ -201,6 +213,7 @@ def run_claude_team_agents_smoke(
         "experimental_agent_teams_enabled": experimental_agent_teams,
         "tmux_env_stripped": True,
         "team_runtime_cleanup": cleanup_report,
+        "runtime": claude_runtime_metadata(runtime),
     }
     save_run(base, run)
     append_event(
@@ -217,6 +230,7 @@ def run_claude_team_agents_smoke(
         experimental_agent_teams_enabled=experimental_agent_teams,
         tmux_env_stripped=True,
         team_runtime_cleanup=cleanup_report,
+        runtime=claude_runtime_metadata(runtime),
         refs=[answer_rel, transcript_rel, status_rel, proof_rel],
     )
     _append_summary(base, round_id, seat_id, team_name, proof_rel, result["status"], trigger_mode)
@@ -228,6 +242,7 @@ def run_claude_team_agents_smoke(
         "experimental_agent_teams_enabled": experimental_agent_teams,
         "tmux_env_stripped": True,
         "team_runtime_cleanup": cleanup_report,
+        "runtime": claude_runtime_metadata(runtime),
         "checks": result["checks"],
         "blockers": result["blockers"],
     }
@@ -571,6 +586,7 @@ def _build_proof(
     launch_cwd: Path,
     started_at: str,
     trigger_mode: str,
+    runtime: dict[str, Any],
 ) -> dict[str, Any]:
     return {
         "schema": TEAM_AGENTS_PROOF_SCHEMA,
@@ -597,6 +613,7 @@ def _build_proof(
         "tmux_env_stripped": tmux_env_stripped,
         "team_runtime_cleanup": cleanup_report,
         "launch_cwd": str(launch_cwd),
+        "runtime": claude_runtime_metadata(runtime),
         "started_at": started_at,
         "completed_at": utc_now(),
         "artifacts": {

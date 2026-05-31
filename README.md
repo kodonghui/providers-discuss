@@ -344,7 +344,7 @@ launch Claude and does not install hooks.
 Proof-report path:
 
 ```bash
-bin/providers-discuss team-agents-proof-report <run-id> --root <runs> --proof logs/round-R1/claude_team.proof.json --json
+bin/providers-discuss team-agents-proof-report <run-id> --root <runs> --proof logs/round-R1/claude_team.team-agents-smoke.proof.json --json
 ```
 
 Summary-only delegation, ordinary subagents, or proof without durable Team

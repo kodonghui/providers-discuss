@@ -113,6 +113,84 @@ print(json.dumps({"response": response, "stats": {"models": {"gemini-test": {"to
 PY
 chmod +x "${fake_gemini}"
 
+fake_claude="${tmp}/fake-claude"
+cat > "${fake_claude}" <<'PY'
+#!/usr/bin/env python3
+import json
+import os
+import sys
+from pathlib import Path
+
+cwd = Path.cwd()
+runtime = {
+    "argv": sys.argv,
+    "env": {
+        "KDH_PROVIDER_DISCUSS_CLAUDE_MODEL": os.environ.get("KDH_PROVIDER_DISCUSS_CLAUDE_MODEL", ""),
+        "KDH_PROVIDER_DISCUSS_CLAUDE_EFFORT": os.environ.get("KDH_PROVIDER_DISCUSS_CLAUDE_EFFORT", ""),
+        "KDH_PROVIDER_DISCUSS_CLAUDE_PERMISSION_MODE": os.environ.get("KDH_PROVIDER_DISCUSS_CLAUDE_PERMISSION_MODE", ""),
+    },
+}
+(cwd / "fake-claude-runtime.json").write_text(json.dumps(runtime, indent=2, sort_keys=True), encoding="utf-8")
+
+answer = Path(os.environ["KDH_PROVIDER_DISCUSS_ANSWER_PATH"])
+status = Path(os.environ["KDH_PROVIDER_DISCUSS_STATUS_PATH"])
+marker = os.environ["KDH_PROVIDER_DISCUSS_COMPLETION_MARKER"]
+run_root = Path(os.environ["KDH_PROVIDER_DISCUSS_RUN_ROOT"])
+run_id = run_root.name
+team_name = os.environ.get("KDH_PROVIDER_DISCUSS_TEAM_NAME", f"providers-r1-{run_id}")
+answer.parent.mkdir(parents=True, exist_ok=True)
+status.parent.mkdir(parents=True, exist_ok=True)
+answer.write_text(f"# fake claude team answer\n\nrun_id={run_id}\nteam={team_name}\n\n{marker}\n", encoding="utf-8")
+status.write_text(
+    json.dumps(
+        {
+            "schema": "kdh.providers-discuss.claude-team-agents-status.v1",
+            "run_id": run_id,
+            "round_id": "R1",
+            "seat_id": "claude_team_shape",
+            "team_name": team_name,
+            "trigger_mode": "prompt_only",
+            "verdict": "admitted",
+            "timed_out": False,
+            "team_create_used": True,
+            "task_create_count": 3,
+            "agent_calls_with_team_name": 3,
+            "direct_teammate_messages_required": 6,
+            "direct_teammate_messages_observed": 6,
+            "ordinary_agent_delegation_only": False,
+            "summary_only_delegation": False,
+            "blocked_reason": "",
+        },
+        indent=2,
+        sort_keys=True,
+    )
+    + "\n",
+    encoding="utf-8",
+)
+home = Path.home()
+project = home / ".claude" / "projects"
+project.mkdir(parents=True, exist_ok=True)
+events = [
+    ("TeamCreate", {"team_name": team_name}),
+    ("TaskCreate", {"team_name": team_name, "task": "readme-writer"}),
+    ("TaskCreate", {"team_name": team_name, "task": "maturity-auditor"}),
+    ("TaskCreate", {"team_name": team_name, "task": "boundary-reviewer"}),
+    ("Agent", {"team_name": team_name, "role": "readme-writer"}),
+    ("Agent", {"team_name": team_name, "role": "maturity-auditor"}),
+    ("Agent", {"team_name": team_name, "role": "boundary-reviewer"}),
+]
+events.extend(("SendMessage", {"team_name": team_name, "token": token}) for token in ("RW->MA", "MA->BR", "BR->RW", "RW->BR", "MA->RW", "BR->MA"))
+with (project / "fake-team.jsonl").open("w", encoding="utf-8") as fh:
+    for name, payload in events:
+        fh.write(json.dumps({"message": {"content": [{"type": "tool_use", "name": name, "input": payload}]}}) + "\n")
+(home / ".claude" / "teams" / team_name).mkdir(parents=True, exist_ok=True)
+(home / ".claude" / "teams" / team_name / "state.json").write_text(json.dumps({"team_name": team_name}) + "\n", encoding="utf-8")
+for name, payload in events:
+    print(f"{name} team_name={payload.get('team_name')}")
+print(marker)
+PY
+chmod +x "${fake_claude}"
+
 cat > "${tmp}/gemini-live.config.json" <<'EOF'
 {
   "schema": "providers-discuss.public-config.v1",
@@ -130,6 +208,79 @@ cat > "${tmp}/gemini-live.config.json" <<'EOF'
       "role": "required Gemini headless reviewer",
       "required": true,
       "timeout_seconds": 5
+    }
+  ]
+}
+EOF
+cat > "${tmp}/mixed-live.config.json" <<'EOF'
+{
+  "schema": "providers-discuss.public-config.v1",
+  "objective": "Smoke mixed live dispatch partial behavior.",
+  "rounds": [
+    {"round_id": "R1", "mode": "decide", "title": "Mixed live dispatch"}
+  ],
+  "seats": [
+    {
+      "seat_id": "codex_required",
+      "provider": "openai",
+      "transport": "codex_exec_file",
+      "model": "gpt-5.5",
+      "reasoning_effort": "medium",
+      "role": "required structural reviewer",
+      "required": true,
+      "timeout_seconds": 5,
+      "execution": {
+        "answer_path_required": true,
+        "completion_marker": "KDH_CODEX_DONE",
+        "read_only_sandbox_forbidden": true,
+        "sandbox": "workspace-write",
+        "stdout_capture_fallback": true
+      }
+    },
+    {
+      "seat_id": "gemini_required",
+      "provider": "google",
+      "transport": "gemini_cli",
+      "model": "gemini-test",
+      "reasoning_effort": "default",
+      "role": "required Gemini headless reviewer",
+      "required": true,
+      "timeout_seconds": 5
+    }
+  ]
+}
+EOF
+cat > "${tmp}/claude-shape.config.json" <<'EOF'
+{
+  "schema": "providers-discuss.public-config.v1",
+  "objective": "Smoke Claude run-shape binding.",
+  "rounds": [
+    {"round_id": "R1", "mode": "decide", "title": "Claude shape binding"}
+  ],
+  "seats": [
+    {
+      "seat_id": "claude_team_shape",
+      "provider": "anthropic",
+      "transport": "claude_k_team_agents",
+      "model": "sonnet",
+      "reasoning_effort": "medium",
+      "role": "shape-bound Team Agents reviewer",
+      "required": true,
+      "timeout_seconds": 5,
+      "execution": {
+        "model": "sonnet",
+        "effort": "medium",
+        "permission_mode": "auto"
+      },
+      "team_agents": {
+        "enabled": true,
+        "required_direct_message_count": 6,
+        "roles": [
+          {"name": "readme-writer"},
+          {"name": "maturity-auditor"},
+          {"name": "boundary-reviewer"}
+        ]
+      }
     }
   ]
 }
@@ -293,6 +444,79 @@ gemini_run="$("${cmd}" init \
   --cli-path "gemini_cli=${fake_gemini}" >/dev/null
 "${cmd}" verify "${gemini_run}" --root "${work}/runs" >/dev/null
 grep -q "KDH_GEMINI_DONE" "${work}/runs/${gemini_run}/answers/round-R1/gemini_required.md"
+
+mixed_run="$("${cmd}" init \
+  --config "${tmp}/mixed-live.config.json" \
+  --root "${work}/runs" \
+  --run-id smoke-mixed)"
+"${cmd}" preflight "${mixed_run}" --root "${work}/runs" >/dev/null
+set +e
+"${cmd}" run-round "${mixed_run}" \
+  --root "${work}/runs" \
+  --round R1 \
+  --mode live-dispatch \
+  --cli-path "gemini_cli=${fake_gemini}" > "${work}/mixed-live.out" 2> "${work}/mixed-live.err"
+mixed_rc=$?
+set -e
+test "${mixed_rc}" -eq 2
+grep -q "live dispatch partial" "${work}/mixed-live.err"
+grep -q "KDH_GEMINI_DONE" "${work}/runs/${mixed_run}/answers/round-R1/gemini_required.md"
+python3 - "${work}/runs/${mixed_run}/run.json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+run = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+assert run["state"] == "round_prompt_ready"
+assert run["current_round"] == "R1"
+PY
+
+claude_shape_run="$("${cmd}" init \
+  --config "${tmp}/claude-shape.config.json" \
+  --root "${work}/runs" \
+  --run-id smoke-claude-shape)"
+"${cmd}" preflight "${claude_shape_run}" --root "${work}/runs" >/dev/null
+HOME="${tmp}/fake-claude-home" "${cmd}" smoke-claude-team-agents "${claude_shape_run}" \
+  --root "${work}/runs" \
+  --round R1 \
+  --seat claude_team_shape \
+  --claude-bin "${fake_claude}" \
+  --experimental-agent-teams \
+  --json > "${work}/claude-shape.json"
+python3 - "${work}/runs/${claude_shape_run}" "${work}/claude-shape.json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+run = Path(sys.argv[1])
+payload = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+assert payload["status"] == "pass"
+assert payload["proof_path"] == "logs/round-R1/claude_team_shape.team-agents-smoke.proof.json"
+runtime = json.loads((run / "fake-claude-runtime.json").read_text(encoding="utf-8"))
+argv = runtime["argv"]
+assert argv[argv.index("--model") + 1] == "sonnet"
+assert argv[argv.index("--effort") + 1] == "medium"
+assert argv[argv.index("--permission-mode") + 1] == "auto"
+assert runtime["env"]["KDH_PROVIDER_DISCUSS_CLAUDE_MODEL"] == "sonnet"
+assert runtime["env"]["KDH_PROVIDER_DISCUSS_CLAUDE_EFFORT"] == "medium"
+proof = json.loads((run / payload["proof_path"]).read_text(encoding="utf-8"))
+assert proof["runtime"]["model"]["effective"] == "sonnet"
+assert proof["runtime"]["effort"]["effective"] == "medium"
+assert proof["runtime"]["timeout_seconds"]["effective"] == 5
+assert proof["runtime"]["timeout_seconds"]["overridden"] is False
+PY
+if HOME="${tmp}/fake-claude-home-override" "${cmd}" smoke-claude-team-agents "${claude_shape_run}" \
+  --root "${work}/runs" \
+  --round R1 \
+  --seat claude_team_shape \
+  --claude-bin "${fake_claude}" \
+  --timeout-seconds 4 \
+  --experimental-agent-teams \
+  --json >/dev/null 2>"${work}/claude-override.err"; then
+  echo "timeout override without reason unexpectedly passed" >&2
+  exit 1
+fi
+grep -q "override requires --override-reason" "${work}/claude-override.err"
 
 profile_run="$("${cmd}" init \
   --config "${pkg}/examples/profile-balanced-kdh.config.json" \

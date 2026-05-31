@@ -461,7 +461,7 @@ def write_manual_import_result(
     required = seat.get("required", True) is not False
     answer_rel = f"answers/round-{round_id}/{seat_id}.md"
     status_rel = f"logs/round-{round_id}/{seat_id}.status.json"
-    proof_rel = f"logs/round-{round_id}/{seat_id}.proof.json"
+    proof_rel = f"logs/round-{round_id}/{seat_id}.manual-import.proof.json"
     status_path = base / status_rel
     proof_path = base / proof_rel
     status_path.parent.mkdir(parents=True, exist_ok=True)

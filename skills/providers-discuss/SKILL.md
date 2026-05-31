@@ -163,6 +163,10 @@ proof files, gates, hashes, and orchestrator prompt deltas under a run root.
 - Do not call unsupported live adapters as if they are finished. Codex exec-file
   is structural, Claude Code is smoke-only, and Claude Team Agents must be
   verified with proof artifacts before claiming real Team Agents evidence.
+- Treat the selected run-shape gate as binding during execution. Smoke/live
+  commands must use the configured seat model, reasoning effort, permission
+  mode, and timeout unless the user explicitly requests an override and records
+  the reason.
 - Do not add hooks, cron, daemons, provider-home mutation, hidden browser OAuth
   automation, global wrappers, or token capture.
 
@@ -195,7 +199,7 @@ providers-discuss team-agents-prompt demo --root ./.runs --round R1 --seat claud
 Use proof-report to inspect Team Agents evidence:
 
 ```bash
-providers-discuss team-agents-proof-report demo --root ./.runs --proof logs/round-R1/claude_team.proof.json --json
+providers-discuss team-agents-proof-report demo --root ./.runs --proof logs/round-R1/claude_team.team-agents-smoke.proof.json --json
 ```
 
 Summary-only delegation, ordinary subagents, missing TeamCreate, missing
