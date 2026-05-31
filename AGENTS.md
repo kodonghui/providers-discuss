@@ -37,8 +37,9 @@ file-backed discussion runner for comparing multiple AI provider seats.
   Japanese, and Spanish; after the choice, continue in the selected language.
 - Immediately after language selection, show the remaining setup order before
   asking for round count.
-- The round-count prompt must say that 1 to N rounds are possible; the default
-  of 3 is not a limit.
+- Combine round count, seat count, provider type, model, and reasoning effort
+  into one run-shape gate. The gate must say that 1 to N rounds are possible;
+  the default of 3 is not a limit.
 - Present intake choices as structured sections and bullets, not inline
   comma-separated option lists.
 - Manual import is not a provider selection. Keep it as a fallback/import
@@ -53,6 +54,12 @@ file-backed discussion runner for comparing multiple AI provider seats.
   unofficial pages, and do not guess exact version numbers when refresh fails.
 - Update README maturity claims together with adapter capability changes.
 - If a change touches provider execution, add or update a smoke/proof path.
+- Skills and agents must not call provider CLIs directly to collect official
+  run answers. Use `bin/providers-discuss run-round`, named smoke commands,
+  `team-agents-proof-report`, `advance`, or explicit `manual-import` of
+  already-created answer files. Do not use `claude -p` for Claude Team Agents,
+  and do not let providers write runner-owned status, proof, event, hash, gate,
+  or orchestrator artifacts.
 
 ## Verification
 

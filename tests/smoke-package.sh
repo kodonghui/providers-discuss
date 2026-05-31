@@ -17,6 +17,7 @@ cmd="${pkg}/bin/providers-discuss"
 "${cmd}" runtime-preflight --help >/dev/null
 "${cmd}" team-agents-prompt --help >/dev/null
 "${cmd}" team-agents-proof-report --help >/dev/null
+"${cmd}" advance --help >/dev/null
 "${cmd}" smoke-gemini-headless --help >/dev/null
 "${cmd}" agent-profiles --help >/dev/null
 "${cmd}" model-refresh --help >/dev/null
@@ -34,6 +35,8 @@ grep -q "name: kdh-providers-discuss" "${install_home}/.codex/skills/kdh-provide
 test -f "${install_home}/.codex/skills/providers-discuss/SKILL.md"
 grep -q "name: providers-discuss" "${install_home}/.codex/skills/providers-discuss/SKILL.md"
 grep -q "model-refresh --provider gemini" "${pkg}/skills/kdh-providers-discuss/SKILL.md"
+grep -q "run-shape gate" "${pkg}/skills/kdh-providers-discuss/SKILL.md"
+grep -q "Do not call provider CLIs directly" "${pkg}/skills/providers-discuss/SKILL.md"
 grep -q "hardcode a specific Gemini version" "${pkg}/docs/intake-workflow.md"
 
 "${pkg}/install.sh" --prefix "${install_home}/.local" --codex-home "${install_home}/.codex" --uninstall >/dev/null
@@ -249,6 +252,23 @@ PY
 "${cmd}" gate "${run_id}" --root "${work}/runs" --round R1 >/dev/null
 "${cmd}" orchestrate "${run_id}" --root "${work}/runs" --after-round R1 >/dev/null
 "${cmd}" verify "${run_id}" --root "${work}/runs" >/dev/null
+set +e
+"${cmd}" advance "${run_id}" --root "${work}/runs" --round-mode dry-run --json > "${work}/advance.json"
+advance_rc=$?
+set -e
+test "${advance_rc}" -eq 2
+python3 - "${work}/advance.json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+assert payload["status"] == "blocked"
+assert payload["state"] == "round_prompt_ready"
+assert payload["current_round"] == "R2"
+assert payload["stop_reason"] == "provider_answers_needed"
+assert payload["actions"][0]["action"] == "run-round"
+PY
 
 gemini_run="$("${cmd}" init \
   --config "${tmp}/gemini-live.config.json" \

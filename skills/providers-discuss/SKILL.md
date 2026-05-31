@@ -13,10 +13,11 @@ proof files, gates, hashes, and orchestrator prompt deltas under a run root.
 
 - Begin with the intake gate unless the user already supplied every required
   choice. Explain that a run needs these decisions, in this order:
-  language, round count, seat count, provider/model/effort per seat, agent
-  profile per selected provider or default, topic, brainstorming mode, and
-  input data path. Run the login/auth gate after providers are selected and
-  before agent profile assignment.
+  language, one run-shape gate, auth check, agent profile per selected provider
+  or default, topic, brainstorming mode, and input data path. The run-shape gate
+  combines round count, seat count, provider type, model, and reasoning effort
+  per seat. Run the login/auth gate after providers are selected and before
+  agent profile assignment.
 - Ask one intake question at a time. After each answer, move to the next
   question. Include short examples because many users will not know provider
   transports, effort levels, or agent profile names.
@@ -37,18 +38,16 @@ proof files, gates, hashes, and orchestrator prompt deltas under a run root.
 - Immediately after the language choice, explain the remaining setup order as
   structured bullets:
   `providers-discuss setup will continue in this order:`
-  `- round count`
-  `- seat count`
-  `- provider type for each seat`
-  `- model for each provider`
-  `- reasoning effort for each provider`
+  `- run shape gate: round count, seat count, provider/model/effort per seat`
   `- provider login/auth check`
   `- agent profile or default for each seat`
   `- topic/objective`
   `- brainstorming mode`
   `- input data path or input pack`
-- At the round-count gate, say that any positive round count from 1 to N is
-  possible. The default of 3 is only a default, not a limit.
+- At the run-shape gate, say that any positive round count from 1 to N is
+  possible. The default of 3 is only a default, not a limit. Collect seat count,
+  provider type, model, and reasoning effort in the same gate instead of
+  splitting them into separate conceptual gates.
 - Before explaining exact model names or effort labels, run a current
   model/effort refresh gate. First say exactly:
   `사용 가능한 model과 effort를 최신정보로 검색하겠습니다.`
@@ -138,6 +137,10 @@ proof files, gates, hashes, and orchestrator prompt deltas under a run root.
   `providers-discuss init --config`.
 - Use `configure` only when the user wants an interactive or answers-JSON setup
   flow.
+- Use `advance` as the default resume/continue command after init/preflight or
+  after a gate. It should move through every legal runner-owned step until the
+  run finishes or hits a real blocker such as missing provider answers, missing
+  claim map, unsupported live dispatch, or missing `result.json`.
 - Run `auth-preflight` before live provider work. It reports readiness and login
   hints, but must not capture OAuth tokens, cookies, provider-home raw config,
   browser state, or shell history.
@@ -150,6 +153,13 @@ proof files, gates, hashes, and orchestrator prompt deltas under a run root.
 - Use `run-round --mode manual-import` only as the manual fallback/import
   workflow. Required seats need explicit `--answer seat_id=/path/to/answer.md`
   files.
+- Do not call provider CLIs directly to create official run answers. Do not run
+  `claude -p`, `codex exec`, or `gemini` by hand and then describe that as
+  runner live dispatch. Official run collection must go through
+  `providers-discuss run-round`, a named smoke command, or explicit
+  `manual-import` of already-created answer files. Providers must only produce
+  answer content; status, proof, event, hash, gate, and orchestrator artifacts
+  are runner-owned.
 - Do not call unsupported live adapters as if they are finished. Codex exec-file
   is structural, Claude Code is smoke-only, and Claude Team Agents must be
   verified with proof artifacts before claiming real Team Agents evidence.
@@ -165,13 +175,14 @@ providers-discuss init --config examples/minimal-manual.config.json --root ./.ru
 providers-discuss preflight demo --root ./.runs
 providers-discuss run-round demo --root ./.runs --round R1 --mode dry-run
 providers-discuss run-round demo --root ./.runs --round R1 --mode manual-import --answer human_reviewer=answer.md
-providers-discuss gate demo --root ./.runs --round R1
-providers-discuss orchestrate demo --root ./.runs --after-round R1
+providers-discuss advance demo --root ./.runs --round-mode dry-run
 providers-discuss verify demo --root ./.runs
 ```
 
 `gate` requires a claim map at `claims/round-Rn-claim-map.json`. Provider
 agreement is not truth; gate and claim support decide what can proceed.
+`advance` does not invent provider answers or claim maps; it moves
+automatically through the legal steps that already have their required inputs.
 
 ## Team Agents
 

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
+import io
 import json
 import shutil
 import sys
@@ -265,6 +267,18 @@ def main(argv: list[str] | None = None) -> int:
     resume = sub.add_parser("resume")
     add_run_args(resume)
 
+    advance = sub.add_parser("advance")
+    add_run_args(advance)
+    advance.add_argument(
+        "--round-mode",
+        choices=["dry-run", "live-dispatch"],
+        default="dry-run",
+        help="provider collection mode to use when the next legal action is run-round",
+    )
+    advance.add_argument("--cli-path", action="append", default=[], help="live dispatch CLI override as key=/path")
+    advance.add_argument("--max-steps", type=int, default=20)
+    advance.add_argument("--json", action="store_true")
+
     cancel = sub.add_parser("cancel")
     add_run_args(cancel)
     cancel.add_argument("--reason", required=True)
@@ -360,6 +374,8 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_team_agents_proof_report(args)
         if args.command == "resume":
             return cmd_resume(args)
+        if args.command == "advance":
+            return cmd_advance(args)
         if args.command == "cancel":
             return cmd_cancel(args)
         if args.command == "finalize":
@@ -1354,6 +1370,9 @@ def cmd_verify(args: argparse.Namespace) -> int:
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         _check(checks, "provider_status_scan", "fail", ["logs"], str(exc))
         blockers.append({"check": "provider_status_scan", "reason": str(exc)})
+    hash_checks, hash_blockers = verify_recorded_artifact_hashes(base)
+    checks.extend(hash_checks)
+    blockers.extend(hash_blockers)
     status = "pass" if not blockers else "fail"
     payload = {"schema": VERIFY_SCHEMA, "run_id": args.run_id, "status": status, "checks": checks, "blockers": blockers}
     write_json(base / "verify.json", payload)
@@ -1846,6 +1865,146 @@ def cmd_resume(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_advance(args: argparse.Namespace) -> int:
+    if args.max_steps < 1:
+        raise ValueError("--max-steps must be positive")
+    base = must_run_root(args.root, args.run_id)
+    cli_overrides = parse_cli_path_overrides(args.cli_path)
+    actions: list[dict[str, Any]] = []
+    stop_reason = ""
+    exit_code = 0
+
+    for _ in range(args.max_steps):
+        run = load_run(base)
+        state = str(run.get("state") or "")
+        current_round = str(run.get("current_round") or _first_round_id(run))
+        if state == "finished":
+            stop_reason = "finished"
+            break
+        if state in {"cancelled", "failed"}:
+            stop_reason = f"run_{state}"
+            exit_code = 1
+            break
+        if state in {"created", "preflight_ready"}:
+            rc = _advance_call(cmd_preflight, argparse.Namespace(root=args.root, run_id=args.run_id), quiet=args.json)
+            actions.append({"action": "preflight", "status": "pass" if rc == 0 else "fail"})
+            if rc != 0:
+                stop_reason = "preflight_failed"
+                exit_code = rc
+                break
+            continue
+        if state in {"preflight_passed", "next_round_ready"}:
+            spec = round_spec(run, current_round)
+            if args.round_mode == "dry-run":
+                rc = _advance_call(lambda _ns: run_round_dry(base, run, spec), argparse.Namespace(), quiet=args.json)
+            else:
+                rc = _advance_call(lambda _ns: run_round_live_dispatch(base, run, spec, cli_overrides), argparse.Namespace(), quiet=args.json)
+            actions.append({"action": "run-round", "round_id": current_round, "mode": args.round_mode, "status": "pass" if rc == 0 else "fail"})
+            if rc != 0:
+                stop_reason = "run_round_failed"
+                exit_code = rc
+                break
+            continue
+        if state == "round_prompt_ready":
+            stop_reason = "provider_answers_needed"
+            exit_code = 2
+            break
+        if state == "round_outputs_collected":
+            claim_map = base / "claims" / f"round-{current_round}-claim-map.json"
+            if not claim_map.exists():
+                stop_reason = f"claim_map_needed:{claim_map.relative_to(base).as_posix()}"
+                exit_code = 2
+                break
+            terminal = next_round_id(run, current_round) == ""
+            rc = _advance_call(cmd_gate, argparse.Namespace(root=args.root, run_id=args.run_id, round=current_round, terminal=terminal), quiet=args.json)
+            actions.append({"action": "gate", "round_id": current_round, "terminal": terminal, "status": "pass" if rc == 0 else "fail"})
+            if rc != 0:
+                stop_reason = "gate_failed"
+                exit_code = rc
+                break
+            continue
+        if state == "round_gated":
+            gate_path = base / "gates" / f"round-{current_round}-gate.md"
+            if not gate_path.exists():
+                stop_reason = f"gate_missing:{gate_path.relative_to(base).as_posix()}"
+                exit_code = 2
+                break
+            gate_payload = _read_gate_payload(gate_path)
+            verdict = str(gate_payload.get("verdict") or "")
+            if verdict == "proceed_to_next_round":
+                rc = _advance_call(cmd_orchestrate, argparse.Namespace(root=args.root, run_id=args.run_id, after_round=current_round), quiet=args.json)
+                actions.append({"action": "orchestrate", "after_round": current_round, "status": "pass" if rc == 0 else "fail"})
+                if rc != 0:
+                    stop_reason = "orchestrate_failed"
+                    exit_code = rc
+                    break
+                continue
+            if verdict in terminal_verdicts():
+                if not (base / "result.json").exists():
+                    stop_reason = "result_json_needed"
+                    exit_code = 2
+                    break
+                rc = _advance_call(cmd_finalize, argparse.Namespace(root=args.root, run_id=args.run_id), quiet=args.json)
+                actions.append({"action": "finalize", "status": "pass" if rc == 0 else "fail"})
+                if rc != 0:
+                    stop_reason = "finalize_failed"
+                    exit_code = rc
+                    break
+                continue
+            stop_reason = f"gate_verdict:{verdict or 'unknown'}"
+            exit_code = 1
+            break
+        if state == "finalizing":
+            if not (base / "result.json").exists():
+                stop_reason = "result_json_needed"
+                exit_code = 2
+                break
+            rc = _advance_call(cmd_finalize, argparse.Namespace(root=args.root, run_id=args.run_id), quiet=args.json)
+            actions.append({"action": "finalize", "status": "pass" if rc == 0 else "fail"})
+            if rc != 0:
+                stop_reason = "finalize_failed"
+                exit_code = rc
+                break
+            continue
+        stop_reason = f"unsupported_state:{state}"
+        exit_code = 2
+        break
+    else:
+        stop_reason = "max_steps_reached"
+        exit_code = 2
+
+    run = load_run(base)
+    payload = {
+        "schema": "kdh.providers-discuss.advance.v1",
+        "run_id": args.run_id,
+        "status": "pass" if exit_code == 0 else "blocked",
+        "state": run.get("state"),
+        "current_round": run.get("current_round"),
+        "round_mode": args.round_mode,
+        "actions": actions,
+        "stop_reason": stop_reason,
+        "next_action": _next_action_for_state(run),
+        "run_root": str(base),
+    }
+    append_event(base, "run.advance_checked", run_id=args.run_id, status=payload["status"], stop_reason=stop_reason, refs=["run.json"])
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
+    else:
+        print(f"advance: {payload['status']}")
+        print(f"state: {payload['state']}")
+        print(f"current_round: {payload['current_round']}")
+        print(f"stop_reason: {stop_reason}")
+        print(f"next_action: {payload['next_action']}")
+    return exit_code
+
+
+def _advance_call(func: Any, namespace: argparse.Namespace, *, quiet: bool) -> int:
+    if not quiet:
+        return int(func(namespace))
+    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+        return int(func(namespace))
+
+
 def cmd_cancel(args: argparse.Namespace) -> int:
     base = must_run_root(args.root, args.run_id)
     run = load_run(base)
@@ -2109,6 +2268,50 @@ def must_run_root(root: Path, run_id: str) -> Path:
     if not base.exists():
         raise ValueError(f"run missing: {base}")
     return base
+
+
+def _first_round_id(run: dict[str, Any]) -> str:
+    rounds = run.get("rounds")
+    if isinstance(rounds, list) and rounds:
+        return str(rounds[0].get("round_id") or "R1")
+    return "R1"
+
+
+def verify_recorded_artifact_hashes(base: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    checks: list[dict[str, Any]] = []
+    blockers: list[dict[str, Any]] = []
+    manifest = base / "hashes" / "artifacts.sha256.json"
+    if not manifest.exists():
+        _check(checks, "artifact_hash_manifest_exists", "pass", ["hashes"])
+        return checks, blockers
+    data = read_json(manifest)
+    artifacts = data.get("artifacts")
+    if not isinstance(artifacts, dict):
+        _check(checks, "artifact_hash_manifest_parseable", "fail", ["hashes/artifacts.sha256.json"])
+        blockers.append({"check": "artifact_hash_manifest_parseable", "reason": "artifacts must be an object"})
+        return checks, blockers
+    mutable_refs = {"run.json", "verify.json", "summary.md"}
+    mismatch_count = 0
+    missing_count = 0
+    checked_count = 0
+    for rel, expected in sorted(artifacts.items()):
+        rel_text = str(rel)
+        if rel_text in mutable_refs or rel_text.startswith("hashes/"):
+            continue
+        path = base / rel_text
+        if not path.exists():
+            missing_count += 1
+            blockers.append({"check": "artifact_hash_missing", "reason": "hashed artifact missing", "ref": rel_text})
+            continue
+        checked_count += 1
+        actual = sha256_file(path)
+        if actual != str(expected):
+            mismatch_count += 1
+            blockers.append({"check": "artifact_hash_mismatch", "reason": "artifact changed after runner hash", "ref": rel_text})
+    status = "pass" if missing_count == 0 and mismatch_count == 0 else "fail"
+    note = f"checked={checked_count} missing={missing_count} mismatched={mismatch_count}"
+    _check(checks, "artifact_hashes_match", status, ["hashes/artifacts.sha256.json"], note)
+    return checks, blockers
 
 
 def _check(checks: list[dict[str, Any]], name: str, status: str, refs: list[str], note: str = "") -> None:

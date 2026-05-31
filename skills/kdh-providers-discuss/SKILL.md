@@ -7,17 +7,18 @@ description: "Use kdh-providers-discuss when a user wants to configure, run, ins
 
 This is the canonical Codex skill for the `providers-discuss` CLI.
 
-- Start with the same intake gate: language, round count, seat count,
-  provider/model/effort choices, agent profiles or default, topic,
-  brainstorming mode, and input data path.
+- Start with the same intake gate: language, one run-shape gate, auth check,
+  agent profiles or default, topic, brainstorming mode, and input data path.
+  The run-shape gate combines round count, seat count, provider type, model,
+  and reasoning effort per seat.
 - Ask one question at a time. First ask for language in English, Korean,
   Chinese, Japanese, and Spanish, then continue in the selected language.
 - Immediately after language selection, show the remaining setup sequence as
-  structured bullets: round count, seat count, provider type, model, reasoning
-  effort, auth check, agent profile/default, topic, brainstorming, and input
-  data path or input pack.
-- At the round-count gate, explain that 1 to N rounds are possible. The default
-  of 3 is not a limit.
+  structured bullets: run-shape gate, auth check, agent profile/default, topic,
+  brainstorming, and input data path or input pack.
+- At the run-shape gate, explain that 1 to N rounds are possible. The default
+  of 3 is not a limit. Collect round count, seat count, provider type, model,
+  and reasoning effort in that same gate.
 - Explain provider options with structured bullets, not comma-separated inline
   lists:
   `[gpt/codex]`
@@ -84,8 +85,14 @@ This is the canonical Codex skill for the `providers-discuss` CLI.
   `providers-discuss init --config`.
 - Run `providers-discuss auth-preflight` before live provider work.
 - Start with `providers-discuss run-round --mode dry-run`.
+- Use `providers-discuss advance` to continue through every legal runner-owned
+  step until the run finishes or reaches a real blocker.
 - Use `providers-discuss run-round --mode manual-import` for the stable live
   workflow.
+- Do not call provider CLIs directly to collect official run answers. Do not use
+  `claude -p` for Claude Team Agents. Official collection must go through
+  `providers-discuss run-round`, a named smoke command, proof report, or
+  explicit manual import.
 - Do not claim unsupported live adapters are mature.
 - Do not add hooks, cron, daemons, provider-home mutation, browser OAuth
   automation, global wrappers, or token capture.

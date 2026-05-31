@@ -47,25 +47,20 @@ Latest correction:
 The skill should ask one question at a time in this order:
 
 1. Language.
-2. Round count.
-3. Seat count.
-4. Provider, model, effort, and Team Agents usage per seat.
-5. Login/auth preflight for the selected providers.
-6. Agent profile per selected seat, or `default`.
-7. Topic/objective.
-8. Brainstorming mode.
-9. Input data path.
+2. Run shape gate: round count, seat count, provider type, model, effort, and
+   Team Agents usage per seat.
+3. Login/auth preflight for the selected providers.
+4. Agent profile per selected seat, or `default`.
+5. Topic/objective.
+6. Brainstorming mode.
+7. Input data path.
 
 Immediately after the language choice, show the remaining setup sequence before
 asking for round count:
 
 ```text
 providers-discuss setup will continue in this order:
-- round count
-- seat count
-- provider type for each seat
-- model for each provider
-- reasoning effort for each provider
+- run shape gate: round count, seat count, provider/model/effort per seat
 - provider login/auth check
 - agent profile or default for each seat
 - topic/objective
@@ -73,12 +68,16 @@ providers-discuss setup will continue in this order:
 - input data path or input pack
 ```
 
-The round-count gate must explicitly say:
+The run-shape gate must explicitly say:
 
 ```text
 Round count can be any positive integer from 1 to N. Default is 3, but it is
 not a limit.
 ```
+
+The same gate must collect seat count plus provider/model/effort choices for
+each seat. Do not split these into unrelated gates; users need to see the whole
+run shape before auth and profile selection.
 
 ## Language Prompt
 

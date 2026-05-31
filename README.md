@@ -118,10 +118,15 @@ run = Path(sys.argv[1])
 }, indent=2) + "\n")
 PY
 
-bin/providers-discuss gate "$run_id" --root "$work/runs" --round R1
-bin/providers-discuss orchestrate "$run_id" --root "$work/runs" --after-round R1
-bin/providers-discuss verify "$run_id" --root "$work/runs"
+bin/providers-discuss advance "$run_id" --root "$work/runs" --round-mode dry-run || true
+bin/providers-discuss status "$run_id" --root "$work/runs"
 ```
+
+`advance` moves through every legal runner-owned step until the run finishes or
+hits a real blocker such as missing provider answers, missing claim map,
+unsupported live dispatch, or missing `result.json`. It does not invent
+provider answers or claim maps. In this two-round manual example, it gates R1,
+orchestrates R2, writes R2 prompts, and then stops at `provider_answers_needed`.
 
 Important run artifacts:
 
@@ -168,14 +173,15 @@ Examples:
 - `examples/profile-balanced-kdh.config.json`
 
 For user-facing setup, follow the staged intake workflow in
-`docs/intake-workflow.md`: language, rounds, seats, providers/efforts, agent
-profiles, topic, brainstorming mode, and input data path. Present every option
-set as structured sections and bullets, not inline comma-separated lists.
+`docs/intake-workflow.md`: language, run shape, auth, agent profiles, topic,
+brainstorming mode, and input data path. Present every option set as structured
+sections and bullets, not inline comma-separated lists.
 Immediately after language selection, explain the remaining setup order:
-round count, seat count, provider type, model, reasoning effort, auth check,
-agent profile/default, topic, brainstorming, and input data path or input pack.
-The round gate must say that any positive round count from 1 to N is allowed;
-the default of 3 is not a limit.
+run-shape gate, auth check, agent profile/default, topic, brainstorming, and
+input data path or input pack. The run-shape gate combines round count, seat
+count, provider type, model, and reasoning effort per seat. It must say that
+any positive round count from 1 to N is allowed; the default of 3 is not a
+limit.
 
 Before asking the user to choose exact provider models or reasoning efforts,
 say `사용 가능한 model과 effort를 최신정보로 검색하겠습니다.`, then refresh

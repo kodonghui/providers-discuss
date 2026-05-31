@@ -96,14 +96,24 @@ class ProviderAdapter:
         if self.transport == "manual":
             return [f"manual import: provide --answer {seat['seat_id']}=<answer.md>"]
         if self.transport == "codex_exec_file":
-            return [f"codex exec < {prompt_path} > {answer_path}  # model={model or 'configured'} effort={effort or 'configured'}"]
+            return [
+                "runner path: providers-discuss run-round <run-id> --round <round> --mode manual-import "
+                f"--answer {seat['seat_id']}=<answer.md>",
+                "codex_exec_file live dispatch is structural; do not call codex directly from this prompt",
+            ]
         if self.transport == "claude_k":
-            return [f"claude --model {model or 'configured'} --effort {effort or 'configured'} < {prompt_path}"]
+            return [
+                "runner path: providers-discuss smoke-claude-k <run-id> --round <round> "
+                f"--seat {seat['seat_id']} --claude-bin <path>",
+                "do not use claude -p or direct Claude CLI answer capture for runner-owned proof",
+            ]
         if self.transport == "claude_k_team_agents":
             roles = seat.get("team_agents", {}).get("roles") or seat.get("team_agents", {}).get("required_teammates") or []
             labels = [_team_role_label(role) for role in roles]
             return [
-                f"claude --model {model or 'configured'} --effort {effort or 'configured'} < {prompt_path}",
+                "runner path: providers-discuss smoke-claude-team-agents <run-id> --round <round> "
+                f"--seat {seat['seat_id']} --claude-bin <path>",
+                "do not use claude -p or direct Claude CLI answer capture for Team Agents proof",
                 f"team-agents roles: {', '.join(_safe_label(role) for role in labels) or 'configured'}",
             ]
         if self.transport == "gemini_cli":
@@ -417,15 +427,20 @@ provider-home config, credential file bodies, or shell history.
 
 {preview}
 
-## Expected Runner-Owned Artifacts
+## Runner-Owned Artifacts
 
 - answer_path: `{answer_rel}`
 - status_path: `{status_rel}`
 - proof_path: `{proof_rel}`
 
+Only the Markdown answer content is provider-writable. Do not create, edit, or
+overwrite runner-owned status, proof, event, hash, gate, or orchestrator files.
+The `providers-discuss` CLI writes those files after it imports or dispatches
+the provider answer.
+
 ## Required Output
 
-Write a concrete answer with claims that can later be mapped into
+Return a concrete Markdown answer with claims that can later be mapped into
 `claims/round-{spec['round_id']}-claim-map.json`.
 
 Do not invent evidence. Do not claim implementation is authorized unless the

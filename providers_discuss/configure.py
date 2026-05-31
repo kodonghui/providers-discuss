@@ -131,16 +131,60 @@ def configure_interactive(stdin: TextIO = sys.stdin, stdout: TextIO = sys.stdout
     answers: dict[str, Any] = {}
     answers["language"] = _ask_language(stdout, stdin)
     _write_setup_sequence(stdout)
-    stdout.write("\nRound count can be any positive integer from 1 to N. Default is 3, but it is not a limit.\n")
-    answers["round_count"] = _ask_int(stdout, stdin, "Round count", len(defaults["rounds"]))
-    stdout.write("\nSeat count means how many independent provider voices you want.\n")
+    answers["round_count"], seats = _ask_run_shape_gate(stdout, stdin, defaults)
+    if _ask_bool(stdout, stdin, "Use agent profiles", False):
+        catalog_paths = _ask_list(stdout, stdin, "Agent catalog paths", _default_agent_catalog_paths())
+        catalogs = _catalogs_value(None, catalog_paths)
+        answers["agent_catalogs"] = catalogs
+        _write_agent_profile_options(stdout, catalogs=catalogs, seats=seats)
+        use_defaults = _ask_bool(stdout, stdin, f"Use {DEFAULT_AGENT_PROFILE_PRESET} defaults", True)
+        answers["agent_profile_defaults"] = {"enabled": use_defaults, "preset": DEFAULT_AGENT_PROFILE_PRESET}
+        if not use_defaults:
+            _ask_profile_assignments(stdout, stdin, seats, catalogs)
+    answers["seats"] = seats
+    answers["objective"] = _ask(stdout, stdin, "Objective/topic", defaults["objective"])
+    answers["brainstorming_mode"] = _ask_brainstorming_mode(stdout, stdin)
+    answers["source_dirs"] = _ask_list(stdout, stdin, "Input/source dirs", defaults["input"]["source_dirs"])
+    return configure_from_answers(answers)
+
+
+def _write_setup_sequence(stdout: TextIO) -> None:
+    stdout.write(
+        "\nproviders-discuss setup will continue in this order:\n"
+        "- run shape gate: round count, seat count, provider/model/effort per seat\n"
+        "- provider login/auth check\n"
+        "- agent profile or default for each seat\n"
+        "- topic/objective\n"
+        "- brainstorming mode\n"
+        "- input data path or input pack\n\n"
+    )
+
+
+def _ask_language(stdout: TextIO, stdin: TextIO) -> str:
+    stdout.write("English: Choose a language:\n- English\n- Korean\n- Chinese\n- Japanese\n- Spanish\n")
+    stdout.write("Korean: 언어를 선택해주세요:\n- 영어\n- 한국어\n- 중국어\n- 일본어\n- 스페인어\n")
+    stdout.write("Chinese: 请选择语言:\n- 英语\n- 韩语\n- 中文\n- 日语\n- 西班牙语\n")
+    stdout.write("Japanese: 言語を選んでください:\n- 英語\n- 韓国語\n- 中国語\n- 日本語\n- スペイン語\n")
+    stdout.write("Spanish: Elige un idioma:\n- inglés\n- coreano\n- chino\n- japonés\n- español\n")
+    return _language_value(_ask(stdout, stdin, "Language", "English"), "English")
+
+
+def _ask_run_shape_gate(stdout: TextIO, stdin: TextIO, defaults: dict[str, Any]) -> tuple[int, list[dict[str, Any]]]:
+    stdout.write(
+        "\nRun shape gate:\n"
+        "- This single gate collects round count, seat count, provider type, model, and reasoning effort.\n"
+        "- Round count can be any positive integer from 1 to N. Default is 3, but it is not a limit.\n"
+        "- Seat count means how many independent provider voices you want.\n"
+        "- Provider/model/effort choices are examples until auth and adapter capability checks pass.\n\n"
+    )
+    round_count = _ask_int(stdout, stdin, "Round count", len(defaults["rounds"]))
     seat_count = _ask_int(stdout, stdin, "Seat count", len([seat for seat in defaults["seats"] if seat.get("enabled", True) is not False]))
     seats: list[dict[str, Any]] = []
     default_seats = defaults["seats"]
     _write_provider_options(stdout)
     for index in range(seat_count):
         default = default_seats[index] if index < len(default_seats) else {}
-        stdout.write(f"\nSeat {index + 1}\n")
+        stdout.write(f"\nRun shape gate / Seat {index + 1}\n")
         seat: dict[str, Any] = {}
         seat["seat_id"] = _ask(stdout, stdin, "Seat id", default.get("seat_id") or f"seat_{index + 1}")
         default_family = _default_provider_family(default)
@@ -174,45 +218,7 @@ def configure_interactive(stdin: TextIO = sys.stdin, stdout: TextIO = sys.stdout
                 ),
             }
         seats.append(seat)
-    if _ask_bool(stdout, stdin, "Use agent profiles", False):
-        catalog_paths = _ask_list(stdout, stdin, "Agent catalog paths", _default_agent_catalog_paths())
-        catalogs = _catalogs_value(None, catalog_paths)
-        answers["agent_catalogs"] = catalogs
-        _write_agent_profile_options(stdout, catalogs=catalogs, seats=seats)
-        use_defaults = _ask_bool(stdout, stdin, f"Use {DEFAULT_AGENT_PROFILE_PRESET} defaults", True)
-        answers["agent_profile_defaults"] = {"enabled": use_defaults, "preset": DEFAULT_AGENT_PROFILE_PRESET}
-        if not use_defaults:
-            _ask_profile_assignments(stdout, stdin, seats, catalogs)
-    answers["seats"] = seats
-    answers["objective"] = _ask(stdout, stdin, "Objective/topic", defaults["objective"])
-    answers["brainstorming_mode"] = _ask_brainstorming_mode(stdout, stdin)
-    answers["source_dirs"] = _ask_list(stdout, stdin, "Input/source dirs", defaults["input"]["source_dirs"])
-    return configure_from_answers(answers)
-
-
-def _write_setup_sequence(stdout: TextIO) -> None:
-    stdout.write(
-        "\nproviders-discuss setup will continue in this order:\n"
-        "- round count\n"
-        "- seat count\n"
-        "- provider type for each seat\n"
-        "- model for each provider\n"
-        "- reasoning effort for each provider\n"
-        "- provider login/auth check\n"
-        "- agent profile or default for each seat\n"
-        "- topic/objective\n"
-        "- brainstorming mode\n"
-        "- input data path or input pack\n\n"
-    )
-
-
-def _ask_language(stdout: TextIO, stdin: TextIO) -> str:
-    stdout.write("English: Choose a language:\n- English\n- Korean\n- Chinese\n- Japanese\n- Spanish\n")
-    stdout.write("Korean: 언어를 선택해주세요:\n- 영어\n- 한국어\n- 중국어\n- 일본어\n- 스페인어\n")
-    stdout.write("Chinese: 请选择语言:\n- 英语\n- 韩语\n- 中文\n- 日语\n- 西班牙语\n")
-    stdout.write("Japanese: 言語を選んでください:\n- 英語\n- 韓国語\n- 中国語\n- 日本語\n- スペイン語\n")
-    stdout.write("Spanish: Elige un idioma:\n- inglés\n- coreano\n- chino\n- japonés\n- español\n")
-    return _language_value(_ask(stdout, stdin, "Language", "English"), "English")
+    return round_count, seats
 
 
 def _write_provider_options(stdout: TextIO) -> None:
