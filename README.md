@@ -205,8 +205,15 @@ Official/current model sources:
 - `[gemini]`
   - `https://ai.google.dev/gemini-api/docs/models`
   - `https://ai.google.dev/api/models`
+  - local dynamic refresh: `providers-discuss model-refresh --provider gemini --json`
   - `https://github.com/google-gemini/gemini-cli/blob/main/docs/cli/model.md`
   - local CLI: `gemini /model`, `gemini --help`, or `gemini --model help` when available
+
+For Gemini, prefer the dynamic refresh command or parse the opened official
+model page/API reference directly. List the newest stable Flash model discovered
+from the official source before older Flash/Pro options. Do not hardcode a
+specific Gemini version; official model pages can change faster than this
+package.
 
 ## Agent Profiles
 

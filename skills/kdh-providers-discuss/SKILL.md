@@ -56,8 +56,14 @@ This is the canonical Codex skill for the `providers-discuss` CLI.
   `[gemini]`
   `- https://ai.google.dev/gemini-api/docs/models`
   `- https://ai.google.dev/api/models`
+  `- local dynamic refresh: providers-discuss model-refresh --provider gemini --json`
   `- https://github.com/google-gemini/gemini-cli/blob/main/docs/cli/model.md`
   `- local CLI: gemini /model, gemini --help, or gemini --model help when available`
+  Gemini-specific freshness rule: prefer the dynamic refresh command or parse
+  the opened official model page/API reference directly. List the newest stable
+  Flash model discovered from the official source before older Flash/Pro
+  options. Do not hardcode a specific Gemini version; official model pages can
+  change faster than this package.
 - After provider selection, run or instruct `providers-discuss auth-preflight`.
   If login is missing, use a URL-first login gate: generate or surface the
   official provider CLI login URL and show that URL to the user. Do not invent,

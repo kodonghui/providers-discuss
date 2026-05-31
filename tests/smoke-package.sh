@@ -12,17 +12,20 @@ tar -C "${root}" --exclude='__pycache__' --exclude='*.pyc' -cf - . | tar -C "${p
 cmd="${pkg}/bin/providers-discuss"
 
 "${cmd}" --help >/dev/null
+"${cmd}" -help >/dev/null
 "${cmd}" hook-config --help >/dev/null
 "${cmd}" runtime-preflight --help >/dev/null
 "${cmd}" team-agents-prompt --help >/dev/null
 "${cmd}" team-agents-proof-report --help >/dev/null
 "${cmd}" smoke-gemini-headless --help >/dev/null
 "${cmd}" agent-profiles --help >/dev/null
+"${cmd}" model-refresh --help >/dev/null
 
 install_home="${tmp}/install-home"
 "${pkg}/install.sh" --prefix "${install_home}/.local" --codex-home "${install_home}/.codex" --dry-run >/dev/null
 "${pkg}/install.sh" --prefix "${install_home}/.local" --codex-home "${install_home}/.codex" >/dev/null
 "${install_home}/.local/bin/providers-discuss" --help >/dev/null
+"${install_home}/.local/bin/providers-discuss" -help >/dev/null
 test -f "${install_home}/.codex/skills/kdh-providers-discuss/SKILL.md"
 test ! -e "${install_home}/.codex/skills/providers-discuss"
 grep -q "name: kdh-providers-discuss" "${install_home}/.codex/skills/kdh-providers-discuss/SKILL.md"
@@ -30,6 +33,8 @@ grep -q "name: kdh-providers-discuss" "${install_home}/.codex/skills/kdh-provide
 "${pkg}/install.sh" --prefix "${install_home}/.local" --codex-home "${install_home}/.codex" --with-public-alias >/dev/null
 test -f "${install_home}/.codex/skills/providers-discuss/SKILL.md"
 grep -q "name: providers-discuss" "${install_home}/.codex/skills/providers-discuss/SKILL.md"
+grep -q "model-refresh --provider gemini" "${pkg}/skills/kdh-providers-discuss/SKILL.md"
+grep -q "hardcode a specific Gemini version" "${pkg}/docs/intake-workflow.md"
 
 "${pkg}/install.sh" --prefix "${install_home}/.local" --codex-home "${install_home}/.codex" --uninstall >/dev/null
 test ! -e "${install_home}/.local/bin/providers-discuss"

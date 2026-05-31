@@ -70,6 +70,7 @@ from .input_pack import (
     build_input_pack,
     source_dirs_from_config,
 )
+from .model_refresh import refresh_models
 from .proofs import validate_team_agents_proof, validate_transport_proof
 from .provider_auth import inspect_seat_auth, login_hint_for_transport, parse_cli_path_overrides, run_auth_preflight
 from .provider_adapters import (
@@ -108,6 +109,8 @@ def default_harness_root() -> Path:
 
 
 def main(argv: list[str] | None = None) -> int:
+    argv = sys.argv[1:] if argv is None else list(argv)
+    argv = ["--help" if item == "-help" else item for item in argv]
     parser = argparse.ArgumentParser(prog="kdh-providers-discuss")
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -133,6 +136,11 @@ def main(argv: list[str] | None = None) -> int:
     configure.add_argument("--cli-path", action="append", default=[], help="auth probe CLI override as key=/path")
     configure.add_argument("--auth-timeout-seconds", type=int, default=3)
     configure.add_argument("--json", action="store_true")
+
+    model_refresh = sub.add_parser("model-refresh")
+    model_refresh.add_argument("--provider", choices=["gemini"], default="gemini")
+    model_refresh.add_argument("--timeout-seconds", type=int, default=15)
+    model_refresh.add_argument("--json", action="store_true")
 
     auth_preflight = sub.add_parser("auth-preflight")
     auth_preflight.add_argument("config", type=Path)
@@ -316,6 +324,8 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_validate_config(args)
         if args.command == "configure":
             return cmd_configure(args)
+        if args.command == "model-refresh":
+            return cmd_model_refresh(args)
         if args.command == "auth-preflight":
             return cmd_auth_preflight(args)
         if args.command == "build-input-pack":
@@ -539,6 +549,24 @@ def cmd_configure(args: argparse.Namespace) -> int:
         print("next:")
         for command in payload["next_commands"]:
             print(f"- {command}")
+    return 0 if payload["status"] == "pass" else 1
+
+
+def cmd_model_refresh(args: argparse.Namespace) -> int:
+    payload = refresh_models(provider=args.provider, timeout_seconds=args.timeout_seconds)
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
+    else:
+        print(f"model-refresh: {payload['status']}")
+        print(f"provider: {payload['provider']}")
+        print("sources:")
+        for source in payload["sources"]:
+            suffix = f" ({source['error']})" if source.get("error") else ""
+            print(f"- {source['status']}: {source['url']}{suffix}")
+        print(f"[{payload['provider']}]")
+        for item in payload["models"][:8]:
+            source_count = len(item.get("sources") or [])
+            print(f"- model: {item['model']} (official sources: {source_count})")
     return 0 if payload["status"] == "pass" else 1
 
 

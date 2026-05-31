@@ -34,6 +34,7 @@ OFFICIAL_MODEL_SOURCES_BY_FAMILY = {
     "gemini": [
         "https://ai.google.dev/gemini-api/docs/models",
         "https://ai.google.dev/api/models",
+        "local dynamic refresh: providers-discuss model-refresh --provider gemini --json",
         "https://github.com/google-gemini/gemini-cli/blob/main/docs/cli/model.md",
         "local CLI: gemini /model, gemini --help, or gemini --model help when available",
     ],
@@ -259,6 +260,13 @@ def _write_model_effort_refresh_gate(stdout: TextIO, family: str) -> None:
     )
     for item in families:
         stdout.write(_model_effort_format_example(item))
+    if family == "gemini":
+        stdout.write(
+            "Gemini freshness check:\n"
+            "- Run `providers-discuss model-refresh --provider gemini --json` or parse the opened official model page/API reference directly.\n"
+            "- List the newest stable Flash model discovered from the official source before older Flash/Pro options.\n"
+            "- Do not hardcode a specific Gemini version; official model pages can change faster than this package.\n\n"
+        )
 
 
 def _provider_source_heading(family: str) -> str:
