@@ -175,10 +175,10 @@ def configure_interactive(stdin: TextIO = sys.stdin, stdout: TextIO = sys.stdout
             }
         seats.append(seat)
     if _ask_bool(stdout, stdin, "Use agent profiles", False):
-        _write_agent_profile_options(stdout)
         catalog_paths = _ask_list(stdout, stdin, "Agent catalog paths", _default_agent_catalog_paths())
         catalogs = _catalogs_value(None, catalog_paths)
         answers["agent_catalogs"] = catalogs
+        _write_agent_profile_options(stdout, catalogs=catalogs, seats=seats)
         use_defaults = _ask_bool(stdout, stdin, f"Use {DEFAULT_AGENT_PROFILE_PRESET} defaults", True)
         answers["agent_profile_defaults"] = {"enabled": use_defaults, "preset": DEFAULT_AGENT_PROFILE_PRESET}
         if not use_defaults:
@@ -324,17 +324,28 @@ def _model_effort_format_example(family: str) -> str:
     return ""
 
 
-def _write_agent_profile_options(stdout: TextIO) -> None:
-    stdout.write(
-        "Agent profile options:\n"
-        "- default: balanced-kdh preset.\n"
-        "- kdh-ideation-catalyst: expands early options and reframes the problem.\n"
-        "- kdh-research-synthesizer: synthesizes source material into evidence-backed conclusions.\n"
-        "- kdh-system-architect: turns requirements into architecture and contracts.\n"
-        "- kdh-code-reviewer: reviews code, prompts, and contracts for regressions.\n"
-        "- kdh-qa-verifier: checks reproducibility and artifact support.\n"
-        "- kdh-technical-writer: writes concise user-facing explanations and handoffs.\n"
-    )
+def _write_agent_profile_options(stdout: TextIO, *, catalogs: list[dict[str, Any]], seats: list[dict[str, Any]]) -> None:
+    stdout.write("Agent profile options:\n")
+    stdout.write("- default: balanced-kdh preset.\n")
+    try:
+        profiles = load_agent_profiles(catalogs)
+    except ValueError as exc:
+        stdout.write(f"- catalog load failed: {exc}\n")
+        stdout.write("- Enter an explicit catalog path or use default without per-profile assignment.\n")
+        return
+    stdout.write(f"- loaded_profiles: {len(profiles)}\n")
+    for profile_id, profile in sorted(profiles.items()):
+        description = str(profile.get("description") or "").strip()
+        stdout.write(f"- {profile_id}: {description}\n")
+    for seat in seats:
+        transport = str(seat.get("transport") or "")
+        compatible = _compatible_profile_ids(profiles, transport=transport)
+        stdout.write(
+            f"\nCompatible profiles for seat {seat.get('seat_id', '')} "
+            f"({transport or 'unknown transport'}): {len(compatible)}\n"
+        )
+        for profile_id in compatible:
+            stdout.write(f"- {profile_id}\n")
 
 
 def _ask_brainstorming_mode(stdout: TextIO, stdin: TextIO) -> str:
@@ -642,8 +653,17 @@ def _team_roles_value(value: Any, default: list[str]) -> list[Any]:
 
 
 def _default_agent_catalog_paths() -> list[str]:
-    path = Path.cwd() / "closed-door-training" / "workspaces" / "kdh-agents" / "catalog" / "kdh-agents.json"
-    return [str(path)] if path.exists() else []
+    package_root = Path(__file__).resolve().parents[1]
+    candidates = [
+        Path.cwd() / "closed-door-training" / "workspaces" / "kdh-agents" / "catalog" / "kdh-agents.json",
+        package_root / "examples" / "agents" / "kdh-profile-catalog.json",
+        package_root / "examples" / "agents" / "kdh-mini-catalog.json",
+    ]
+    for path in candidates:
+        resolved = path.resolve()
+        if resolved.exists():
+            return [str(resolved)]
+    return []
 
 
 def _ask_profile_assignments(stdout: TextIO, stdin: TextIO, seats: list[dict[str, Any]], catalogs: list[dict[str, Any]]) -> None:
@@ -657,7 +677,7 @@ def _ask_profile_assignments(stdout: TextIO, stdin: TextIO, seats: list[dict[str
         transport = str(seat.get("transport") or "")
         compatible = _compatible_profile_ids(profiles, transport=transport)
         default_profile = compatible[0] if compatible else ""
-        hint = f" compatible: {', '.join(compatible[:8])}" if compatible else ""
+        hint = f" compatible ({len(compatible)}): {', '.join(compatible)}" if compatible else " compatible (0): none"
         profile_id = _ask(stdout, stdin, f"Agent profile for seat {seat.get('seat_id', '')}{hint}", default_profile)
         if profile_id:
             seat["agent_profile_id"] = profile_id

@@ -119,12 +119,17 @@ proof files, gates, hashes, and orchestrator prompt deltas under a run root.
   instruct that official flow. Never capture OAuth tokens, cookies,
   provider-home config bodies, browser state, credential file contents, or
   shell history.
-- At the agent profile step, list available profiles with one-line
-  descriptions and offer `default`. If the user selected one Claude seat and
-  one GPT/Codex seat, say for example: "You selected 1 Claude seat and 1
-  GPT/Codex seat. Choose an agent profile for each, or choose default."
-  Default means the `balanced-kdh` preset for the selected provider seats and
-  Team Agents roles.
+- At the agent profile step, load profiles from the configured catalog and list
+  the actual `loaded_profiles` count with one-line descriptions; do not
+  hand-type a small fallback subset. The bundled full KDH catalog is
+  `examples/agents/kdh-profile-catalog.json` and contains 15 profiles. Use
+  `providers-discuss agent-profiles --config <config> --markdown` when a config
+  exists, or `providers-discuss agent-profiles --catalog <catalog> --markdown`
+  when only a catalog path is known. Offer `default`; it means the
+  `balanced-kdh` preset for the selected provider seats and Team Agents roles.
+  If the user selected one Claude seat and one GPT/Codex seat, say for example:
+  "You selected 1 Claude seat and 1 GPT/Codex seat. Choose an agent profile for
+  each, or choose default."
 - Treat `brainstorming` as an explicit intake choice. Ask whether the user
   wants no brainstorming, light brainstorming, or deep brainstorming before
   provider rounds. If enabled, keep it as a visible stage in the config or

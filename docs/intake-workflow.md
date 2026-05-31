@@ -275,16 +275,21 @@ Current login gate examples:
 
 ## Agent Profile Explanation
 
-List profiles with one-line descriptions before asking for assignments:
+Load and list profiles with one-line descriptions before asking for
+assignments. Do not hand-type a fallback subset. The bundled full catalog is
+`examples/agents/kdh-profile-catalog.json` and currently contains 15 KDH
+profiles; `examples/agents/kdh-mini-catalog.json` is only a small fixture.
+Use the CLI when possible:
+
+```bash
+bin/providers-discuss agent-profiles --config examples/profile-balanced-kdh.config.json --markdown
+```
+
+Always include:
 
 - `default`: use `balanced-kdh`.
-- `kdh-ideation-catalyst`: expands early options and reframes the problem.
-- `kdh-research-synthesizer`: synthesizes source material into evidence-backed
-  conclusions.
-- `kdh-system-architect`: turns requirements into architecture and contracts.
-- `kdh-code-reviewer`: reviews code, prompts, and contracts for regressions.
-- `kdh-qa-verifier`: checks reproducibility and artifact support.
-- `kdh-technical-writer`: writes concise user-facing explanations and handoffs.
+- `loaded_profiles`: the number reported by the loaded catalog.
+- one bullet per loaded profile id and description.
 
 When the user has selected seats, ask per seat:
 

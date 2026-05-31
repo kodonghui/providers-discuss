@@ -2,8 +2,8 @@
   "agent_catalogs": [
     {
       "enabled": true,
-      "id": "kdh-mini",
-      "path": "agents/kdh-mini-catalog.json",
+      "id": "kdh-profile-catalog",
+      "path": "agents/kdh-profile-catalog.json",
       "required": true,
       "type": "kdh_agents_catalog"
     }

@@ -226,14 +226,16 @@ List profiles before choosing them:
 ```bash
 bin/providers-discuss agent-profiles --config examples/profile-balanced-kdh.config.json
 bin/providers-discuss agent-profiles --config examples/profile-balanced-kdh.config.json --seat human_reviewer --markdown
-bin/providers-discuss agent-profiles --catalog examples/agents/kdh-mini-catalog.json --transport manual
+bin/providers-discuss agent-profiles --catalog examples/agents/kdh-profile-catalog.json --transport manual
 ```
 
-Use `agent_profile_id` per seat or enable `agent_profile_defaults` with
-`balanced-kdh`. Normal reports show clean user-facing fields such as id, name,
-description, provider targets, Team Agents fit, source profile count, catalog
-reference, and compatibility. They do not dump source profile ids or local
-source repository paths.
+The bundled `examples/agents/kdh-profile-catalog.json` contains the full
+15-profile KDH prompt-role catalog. `examples/agents/kdh-mini-catalog.json` is
+kept only as a small fixture. Use `agent_profile_id` per seat or enable
+`agent_profile_defaults` with `balanced-kdh`. Normal reports show clean
+user-facing fields such as id, name, description, provider targets, Team Agents
+fit, source profile count, catalog reference, and compatibility. They do not
+dump source profile ids or local source repository paths.
 
 ## Auth/Login Gate
 

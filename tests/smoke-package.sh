@@ -155,17 +155,27 @@ import sys
 
 payload = json.loads(sys.argv[1])
 assert payload["status"] == "pass"
-assert payload["profile_count"] >= 6
+assert payload["profile_count"] == 15
 text = json.dumps(payload, ensure_ascii=False)
 assert "source_profile_ids" not in text
 assert "source_repo_paths" not in text
 assert "/home/opc/kdh-harness" not in text
 assert any(item["id"] == "kdh-technical-writer" for item in payload["profiles"])
+assert any(item["id"] == "kdh-security-reviewer" for item in payload["profiles"])
 PY
 "${cmd}" agent-profiles \
   --config "${pkg}/examples/profile-balanced-kdh.config.json" \
   --transport manual \
   --markdown >/dev/null
+PYTHONPATH="${pkg}" python3 - <<'PY'
+from pathlib import Path
+from providers_discuss.configure import _default_agent_catalog_paths
+
+paths = [Path(path).resolve() for path in _default_agent_catalog_paths()]
+assert paths
+assert paths[0].exists()
+assert paths[0].name == "kdh-profile-catalog.json", paths
+PY
 
 work="${tmp}/work"
 mkdir -p "${work}/inputs" "${work}/answers"

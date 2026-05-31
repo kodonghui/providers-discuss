@@ -70,8 +70,14 @@ This is the canonical Codex skill for the `providers-discuss` CLI.
   hardcode, scrape, or store unofficial URLs. Do not capture tokens, cookies,
   provider-home config bodies, browser state, credential files, or shell
   history.
-- At the agent step, list available profiles with short descriptions and offer
-  `default` using the balanced KDH preset.
+- At the agent step, load profiles from the configured catalog and list the
+  actual `loaded_profiles` count with short descriptions. Do not hand-type a
+  small fallback subset. The bundled full KDH catalog is
+  `examples/agents/kdh-profile-catalog.json` and contains 15 profiles. Use
+  `providers-discuss agent-profiles --config <config> --markdown` when a config
+  exists, or `providers-discuss agent-profiles --catalog <catalog> --markdown`
+  when only a catalog path is known. Offer `default` using the balanced KDH
+  preset.
 - Ask explicitly whether the user wants no brainstorming, light brainstorming,
   or deep brainstorming before provider rounds.
 - Prefer config-first runs with `providers-discuss validate-config`, then
