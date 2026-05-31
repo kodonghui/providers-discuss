@@ -19,6 +19,7 @@ from .claude_smoke import (
     claude_runtime_env,
     claude_runtime_metadata,
 )
+from .agent_profiles import team_role_specs
 from .proofs import TEAM_AGENTS_PROOF_SCHEMA, validate_team_agents_proof
 from .provider_adapters import FAILURE_PERMISSION_PROMPT, FAILURE_PROOF_FAILED, FAILURE_TIMEOUT, FAILURE_WORKSPACE_TRUST_PROMPT
 
@@ -55,8 +56,8 @@ def run_claude_team_agents_smoke(
         raise ValueError(f"unsupported trigger-mode: {trigger_mode}")
 
     seat_id = seat["seat_id"]
-    team_cfg = seat.get("team_agents", {})
-    teammates = team_cfg.get("required_teammates") or ["source-reader", "skeptic", "recorder"]
+    team_cfg = seat.get("team_agents") if isinstance(seat.get("team_agents"), dict) else {}
+    teammates = [role["name"] for role in team_role_specs(team_cfg)]
     required_direct_messages = int(team_cfg.get("required_direct_message_count", DEFAULT_TEAM_AGENTS_DIRECT_MESSAGE_COUNT))
     team_name = f"providers-{round_id.lower()}-{run['run_id']}"
 
@@ -264,6 +265,8 @@ def _team_agents_prompt(
     answer_abs = run_root / answer_rel
     status_abs = run_root / status_rel
     marker_instruction = "the exact string formed by concatenating `KDH_CLAUDE` and `_DONE`"
+    teammate_count = len(teammates)
+    teammate_list = _format_teammate_list(teammates)
     return f"""# KDH Claude-K Team Agents Live Smoke Contract
 
 This is a bounded Team Agents PoC inside a live Claude Code PTY session.
@@ -282,8 +285,8 @@ Run details:
 
 Required live actions:
 1. Use `TeamCreate` to create the named team above.
-2. Use `TaskCreate` to create teammate tasks for the required teammates above:
-   source-reader, skeptic, and recorder.
+2. Use `TaskCreate` to create one teammate task for each required teammate above:
+   {teammate_list}.
 3. Launch each teammate through the team-scoped tool named `Agent`, using the
    team name above as the team scope.
 4. Use `SendMessage` for at least {required_direct_messages}
@@ -311,8 +314,8 @@ Write status JSON at `{status_abs}` with this shape:
   "verdict": "admitted",
   "timed_out": false,
   "team_create_used": true,
-  "task_create_count": 3,
-  "agent_calls_with_team_name": 3,
+  "task_create_count": {teammate_count},
+  "agent_calls_with_team_name": {teammate_count},
   "direct_teammate_messages_required": {required_direct_messages},
   "direct_teammate_messages_observed": {required_direct_messages},
   "ordinary_agent_delegation_only": false,
@@ -324,6 +327,16 @@ Write status JSON at `{status_abs}` with this shape:
 After both files are written, print that same completion marker to the terminal.
 Do not use `claude -p`. Do not modify source files or provider-home config.
 """
+
+
+def _format_teammate_list(teammates: list[str]) -> str:
+    if not teammates:
+        return ""
+    if len(teammates) == 1:
+        return teammates[0]
+    if len(teammates) == 2:
+        return f"{teammates[0]} and {teammates[1]}"
+    return f"{', '.join(teammates[:-1])}, and {teammates[-1]}"
 
 
 def _snapshot_claude_jsonl() -> dict[Path, int]:

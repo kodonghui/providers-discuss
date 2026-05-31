@@ -508,6 +508,12 @@ assert proof["runtime"]["model"]["effective"] == "sonnet"
 assert proof["runtime"]["effort"]["effective"] == "medium"
 assert proof["runtime"]["timeout_seconds"]["effective"] == 5
 assert proof["runtime"]["timeout_seconds"]["overridden"] is False
+assert proof["required_teammates"] == ["readme-writer", "maturity-auditor", "boundary-reviewer"]
+prompt = (run / "prompts" / "round-R1" / "claude_team_shape.live-team-agents-smoke.md").read_text(encoding="utf-8")
+assert "readme-writer, maturity-auditor, and boundary-reviewer" in prompt
+assert "source-reader, skeptic, and recorder" not in prompt
+assert '"task_create_count": 3' in prompt
+assert '"agent_calls_with_team_name": 3' in prompt
 PY
 if HOME="${tmp}/fake-claude-home-override" "${cmd}" smoke-claude-team-agents "${claude_shape_run}" \
   --root "${work}/runs" \
