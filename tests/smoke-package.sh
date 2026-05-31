@@ -167,6 +167,18 @@ PY
   --config "${pkg}/examples/profile-balanced-kdh.config.json" \
   --transport manual \
   --markdown >/dev/null
+gemini_profile_report="$("${cmd}" agent-profiles \
+  --config "${pkg}/examples/profile-balanced-kdh.config.json" \
+  --transport gemini_cli)"
+python3 - "${gemini_profile_report}" <<'PY'
+import json
+import sys
+
+payload = json.loads(sys.argv[1])
+compatible = [item["id"] for item in payload["profiles"] if item["compatibility"]["compatible"] is True]
+assert payload["profile_count"] == 15
+assert len(compatible) == 15
+PY
 PYTHONPATH="${pkg}" python3 - <<'PY'
 from pathlib import Path
 from providers_discuss.configure import _default_agent_catalog_paths

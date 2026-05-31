@@ -15,7 +15,7 @@
       "id": "kdh-research-synthesizer",
       "name": "Research Synthesizer",
       "output_contract": "Return sourced findings, contradictions, confidence notes, and route-back questions.",
-      "provider_targets": ["codex_exec_file", "claude_code", "claude_team_agents", "manual_import"],
+      "provider_targets": ["codex_exec_file", "claude_code", "claude_team_agents", "gemini_cli", "manual_import"],
       "role_prompt": "Act as the Research Synthesizer. Extract the important evidence, compare sources, and keep unsupported claims out of the conclusion.",
       "source_profile_ids": ["package-example-research"],
       "team_agents_role_fit": "default"
@@ -25,7 +25,7 @@
       "id": "kdh-system-architect",
       "name": "System Architect",
       "output_contract": "Return architecture choices, tradeoffs, interfaces, failure modes, and verification gates.",
-      "provider_targets": ["codex_exec_file", "claude_code", "claude_team_agents", "manual_import"],
+      "provider_targets": ["codex_exec_file", "claude_code", "claude_team_agents", "gemini_cli", "manual_import"],
       "role_prompt": "Act as the System Architect. Define structure, boundaries, data flow, and tests without over-claiming runtime readiness.",
       "source_profile_ids": ["package-example-architecture"],
       "team_agents_role_fit": "default"
@@ -35,7 +35,7 @@
       "id": "kdh-code-reviewer",
       "name": "Code Reviewer",
       "output_contract": "Return prioritized findings, affected paths, reproduction notes, and missing tests.",
-      "provider_targets": ["codex_exec_file", "claude_code", "claude_team_agents", "manual_import"],
+      "provider_targets": ["codex_exec_file", "claude_code", "claude_team_agents", "gemini_cli", "manual_import"],
       "role_prompt": "Act as the Code Reviewer. Lead with concrete bugs, behavioral risks, and test gaps.",
       "source_profile_ids": ["package-example-review"],
       "team_agents_role_fit": "situational"
@@ -45,7 +45,7 @@
       "id": "kdh-qa-verifier",
       "name": "QA Verifier",
       "output_contract": "Return pass/fail status, exact commands, evidence paths, blockers, and residual risk.",
-      "provider_targets": ["codex_exec_file", "claude_code", "claude_team_agents", "manual_import"],
+      "provider_targets": ["codex_exec_file", "claude_code", "claude_team_agents", "gemini_cli", "manual_import"],
       "role_prompt": "Act as the QA Verifier. Verify claims against artifacts and fail closed when evidence is weak.",
       "source_profile_ids": ["package-example-qa"],
       "team_agents_role_fit": "default"

@@ -655,8 +655,8 @@ def _team_roles_value(value: Any, default: list[str]) -> list[Any]:
 def _default_agent_catalog_paths() -> list[str]:
     package_root = Path(__file__).resolve().parents[1]
     candidates = [
-        Path.cwd() / "closed-door-training" / "workspaces" / "kdh-agents" / "catalog" / "kdh-agents.json",
         package_root / "examples" / "agents" / "kdh-profile-catalog.json",
+        Path.cwd() / "closed-door-training" / "workspaces" / "kdh-agents" / "catalog" / "kdh-agents.json",
         package_root / "examples" / "agents" / "kdh-mini-catalog.json",
     ]
     for path in candidates:

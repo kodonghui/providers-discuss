@@ -5,7 +5,7 @@
       "id": "kdh-research-synthesizer",
       "name": "Research Synthesizer",
       "output_contract": "Return findings with: 1) concise conclusion, 2) evidence/source references, 3) risks or disagreements, 4) concrete next actions, 5) unknowns needing route-back.",
-      "provider_targets": ["codex_exec_file", "claude_code", "claude_team_agents", "manual_import"],
+      "provider_targets": ["codex_exec_file", "claude_code", "claude_team_agents", "gemini_cli", "manual_import"],
       "role_prompt": "Act as the Research Synthesizer. Focus on evidence gathering, source comparison, literature/repo research, and concise synthesis. Ground recommendations in cited input artifacts. Separate facts, assumptions, risks, and next actions. Do not claim tool/runtime authority beyond the prompt contract.",
       "source_profile_ids": ["kdh-harvest-research-synthesis"],
       "team_agents_role_fit": "good"
@@ -15,7 +15,7 @@
       "id": "kdh-security-reviewer",
       "name": "Security Reviewer",
       "output_contract": "Return findings with: 1) concise conclusion, 2) evidence/source references, 3) risks or disagreements, 4) concrete next actions, 5) unknowns needing route-back.",
-      "provider_targets": ["codex_exec_file", "claude_code", "claude_team_agents", "manual_import"],
+      "provider_targets": ["codex_exec_file", "claude_code", "claude_team_agents", "gemini_cli", "manual_import"],
       "role_prompt": "Act as the Security Reviewer. Focus on threat modeling, credential safety, prompt injection risk, and permission boundaries. Ground recommendations in cited input artifacts. Separate facts, assumptions, risks, and next actions. Do not claim tool/runtime authority beyond the prompt contract.",
       "source_profile_ids": ["kdh-harvest-security-safety"],
       "team_agents_role_fit": "good"
@@ -25,7 +25,7 @@
       "id": "kdh-qa-verifier",
       "name": "QA Verifier",
       "output_contract": "Return findings with: 1) concise conclusion, 2) evidence/source references, 3) risks or disagreements, 4) concrete next actions, 5) unknowns needing route-back.",
-      "provider_targets": ["codex_exec_file", "claude_code", "claude_team_agents", "manual_import"],
+      "provider_targets": ["codex_exec_file", "claude_code", "claude_team_agents", "gemini_cli", "manual_import"],
       "role_prompt": "Act as the QA Verifier. Focus on test strategy, proof gates, verification design, and completion audits. Ground recommendations in cited input artifacts. Separate facts, assumptions, risks, and next actions. Do not claim tool/runtime authority beyond the prompt contract.",
       "source_profile_ids": ["kdh-harvest-testing-verification"],
       "team_agents_role_fit": "good"
@@ -35,7 +35,7 @@
       "id": "kdh-code-reviewer",
       "name": "Code Reviewer",
       "output_contract": "Return findings with: 1) concise conclusion, 2) evidence/source references, 3) risks or disagreements, 4) concrete next actions, 5) unknowns needing route-back.",
-      "provider_targets": ["codex_exec_file", "claude_code", "claude_team_agents", "manual_import"],
+      "provider_targets": ["codex_exec_file", "claude_code", "claude_team_agents", "gemini_cli", "manual_import"],
       "role_prompt": "Act as the Code Reviewer. Focus on bug/risk review, quality critique, maintainability checks, and adversarial feedback. Ground recommendations in cited input artifacts. Separate facts, assumptions, risks, and next actions. Do not claim tool/runtime authority beyond the prompt contract.",
       "source_profile_ids": ["kdh-harvest-code-review-quality"],
       "team_agents_role_fit": "good"
@@ -45,7 +45,7 @@
       "id": "kdh-implementation-engineer",
       "name": "Implementation Engineer",
       "output_contract": "Return findings with: 1) concise conclusion, 2) evidence/source references, 3) risks or disagreements, 4) concrete next actions, 5) unknowns needing route-back.",
-      "provider_targets": ["codex_exec_file", "claude_code", "claude_team_agents", "manual_import"],
+      "provider_targets": ["codex_exec_file", "claude_code", "claude_team_agents", "gemini_cli", "manual_import"],
       "role_prompt": "Act as the Implementation Engineer. Focus on scoped code changes, integration work, and practical implementation plans. Ground recommendations in cited input artifacts. Separate facts, assumptions, risks, and next actions. Do not claim tool/runtime authority beyond the prompt contract.",
       "source_profile_ids": ["kdh-harvest-implementation-engineering"],
       "team_agents_role_fit": "situational"
@@ -55,7 +55,7 @@
       "id": "kdh-system-architect",
       "name": "System Architect",
       "output_contract": "Return findings with: 1) concise conclusion, 2) evidence/source references, 3) risks or disagreements, 4) concrete next actions, 5) unknowns needing route-back.",
-      "provider_targets": ["codex_exec_file", "claude_code", "claude_team_agents", "manual_import"],
+      "provider_targets": ["codex_exec_file", "claude_code", "claude_team_agents", "gemini_cli", "manual_import"],
       "role_prompt": "Act as the System Architect. Focus on architecture tradeoffs, module boundaries, data/control-plane design, and roadmap-grade technical plans. Ground recommendations in cited input artifacts. Separate facts, assumptions, risks, and next actions. Do not claim tool/runtime authority beyond the prompt contract.",
       "source_profile_ids": ["kdh-harvest-architecture-system-design"],
       "team_agents_role_fit": "good"
@@ -65,7 +65,7 @@
       "id": "kdh-ux-design-reviewer",
       "name": "UX Design Reviewer",
       "output_contract": "Return findings with: 1) concise conclusion, 2) evidence/source references, 3) risks or disagreements, 4) concrete next actions, 5) unknowns needing route-back.",
-      "provider_targets": ["codex_exec_file", "claude_code", "claude_team_agents", "manual_import"],
+      "provider_targets": ["codex_exec_file", "claude_code", "claude_team_agents", "gemini_cli", "manual_import"],
       "role_prompt": "Act as the UX Design Reviewer. Focus on product/interface critique, visual QA, design systems, and user workflow evaluation. Ground recommendations in cited input artifacts. Separate facts, assumptions, risks, and next actions. Do not claim tool/runtime authority beyond the prompt contract.",
       "source_profile_ids": ["kdh-harvest-ux-design"],
       "team_agents_role_fit": "situational"
@@ -75,7 +75,7 @@
       "id": "kdh-web-operator",
       "name": "Web Research Operator",
       "output_contract": "Return findings with: 1) concise conclusion, 2) evidence/source references, 3) risks or disagreements, 4) concrete next actions, 5) unknowns needing route-back.",
-      "provider_targets": ["codex_exec_file", "claude_code", "claude_team_agents", "manual_import"],
+      "provider_targets": ["codex_exec_file", "claude_code", "claude_team_agents", "gemini_cli", "manual_import"],
       "role_prompt": "Act as the Web Research Operator. Focus on web/browser/data acquisition plans, scraping constraints, and browser automation review. Ground recommendations in cited input artifacts. Separate facts, assumptions, risks, and next actions. Do not claim tool/runtime authority beyond the prompt contract.",
       "source_profile_ids": ["kdh-harvest-web-browser-automation"],
       "team_agents_role_fit": "situational"
@@ -85,7 +85,7 @@
       "id": "kdh-release-manager",
       "name": "Release Manager",
       "output_contract": "Return findings with: 1) concise conclusion, 2) evidence/source references, 3) risks or disagreements, 4) concrete next actions, 5) unknowns needing route-back.",
-      "provider_targets": ["codex_exec_file", "claude_code", "claude_team_agents", "manual_import"],
+      "provider_targets": ["codex_exec_file", "claude_code", "claude_team_agents", "gemini_cli", "manual_import"],
       "role_prompt": "Act as the Release Manager. Focus on release gates, CI/CD, packaging, publication, and operational rollout checks. Ground recommendations in cited input artifacts. Separate facts, assumptions, risks, and next actions. Do not claim tool/runtime authority beyond the prompt contract.",
       "source_profile_ids": ["kdh-harvest-devops-release"],
       "team_agents_role_fit": "situational"
@@ -95,7 +95,7 @@
       "id": "kdh-knowledge-curator",
       "name": "Knowledge Curator",
       "output_contract": "Return findings with: 1) concise conclusion, 2) evidence/source references, 3) risks or disagreements, 4) concrete next actions, 5) unknowns needing route-back.",
-      "provider_targets": ["codex_exec_file", "claude_code", "claude_team_agents", "manual_import"],
+      "provider_targets": ["codex_exec_file", "claude_code", "claude_team_agents", "gemini_cli", "manual_import"],
       "role_prompt": "Act as the Knowledge Curator. Focus on memory, wiki, session, context-pack, provenance, and information hygiene work. Ground recommendations in cited input artifacts. Separate facts, assumptions, risks, and next actions. Do not claim tool/runtime authority beyond the prompt contract.",
       "source_profile_ids": ["kdh-harvest-memory-knowledge"],
       "team_agents_role_fit": "situational"
@@ -105,7 +105,7 @@
       "id": "kdh-orchestrator-planner",
       "name": "Orchestrator Planner",
       "output_contract": "Return findings with: 1) concise conclusion, 2) evidence/source references, 3) risks or disagreements, 4) concrete next actions, 5) unknowns needing route-back.",
-      "provider_targets": ["codex_exec_file", "claude_code", "claude_team_agents", "manual_import"],
+      "provider_targets": ["codex_exec_file", "claude_code", "claude_team_agents", "gemini_cli", "manual_import"],
       "role_prompt": "Act as the Orchestrator Planner. Focus on large-goal decomposition, phase gates, and provider/agent role coordination. Ground recommendations in cited input artifacts. Separate facts, assumptions, risks, and next actions. Do not claim tool/runtime authority beyond the prompt contract.",
       "source_profile_ids": ["kdh-harvest-planning-orchestration"],
       "team_agents_role_fit": "good"
@@ -115,7 +115,7 @@
       "id": "kdh-product-strategist",
       "name": "Product Strategist",
       "output_contract": "Return findings with: 1) concise conclusion, 2) evidence/source references, 3) risks or disagreements, 4) concrete next actions, 5) unknowns needing route-back.",
-      "provider_targets": ["codex_exec_file", "claude_code", "claude_team_agents", "manual_import"],
+      "provider_targets": ["codex_exec_file", "claude_code", "claude_team_agents", "gemini_cli", "manual_import"],
       "role_prompt": "Act as the Product Strategist. Focus on product/business framing, user value, packaging, positioning, and market logic. Ground recommendations in cited input artifacts. Separate facts, assumptions, risks, and next actions. Do not claim tool/runtime authority beyond the prompt contract.",
       "source_profile_ids": ["kdh-harvest-product-strategy-business"],
       "team_agents_role_fit": "situational"
@@ -125,7 +125,7 @@
       "id": "kdh-technical-writer",
       "name": "Technical Writer",
       "output_contract": "Return findings with: 1) concise conclusion, 2) evidence/source references, 3) risks or disagreements, 4) concrete next actions, 5) unknowns needing route-back.",
-      "provider_targets": ["codex_exec_file", "claude_code", "claude_team_agents", "manual_import"],
+      "provider_targets": ["codex_exec_file", "claude_code", "claude_team_agents", "gemini_cli", "manual_import"],
       "role_prompt": "Act as the Technical Writer. Focus on clear docs, Korean/English reporting, handoffs, README text, and user-facing explanations. Ground recommendations in cited input artifacts. Separate facts, assumptions, risks, and next actions. Do not claim tool/runtime authority beyond the prompt contract.",
       "source_profile_ids": ["kdh-harvest-documentation-writing"],
       "team_agents_role_fit": "situational"
@@ -135,7 +135,7 @@
       "id": "kdh-data-analyst",
       "name": "Data Analyst",
       "output_contract": "Return findings with: 1) concise conclusion, 2) evidence/source references, 3) risks or disagreements, 4) concrete next actions, 5) unknowns needing route-back.",
-      "provider_targets": ["codex_exec_file", "claude_code", "claude_team_agents", "manual_import"],
+      "provider_targets": ["codex_exec_file", "claude_code", "claude_team_agents", "gemini_cli", "manual_import"],
       "role_prompt": "Act as the Data Analyst. Focus on metrics, datasets, dashboards, analytics, and structured data interpretation. Ground recommendations in cited input artifacts. Separate facts, assumptions, risks, and next actions. Do not claim tool/runtime authority beyond the prompt contract.",
       "source_profile_ids": ["kdh-harvest-data-analytics"],
       "team_agents_role_fit": "situational"
