@@ -166,7 +166,6 @@ Examples:
 - `examples/gemini-optional.config.json`
 - `examples/gemini-live.config.json`
 - `examples/profile-balanced-kdh.config.json`
-- `examples/discussions/public-package-readme/public-package-readme.config.json`
 
 For user-facing setup, follow the staged intake workflow in
 `docs/intake-workflow.md`: language, rounds, seats, providers/efforts, agent
@@ -281,16 +280,6 @@ file artifacts:
 
 ```bash
 bin/providers-discuss build-input-pack --config providers-discuss.config.json --output-dir input-pack
-```
-
-The bundled public README discussion input is repo-relative, so it works inside
-provider workspaces that cannot see host-local KDH paths:
-
-```bash
-bin/providers-discuss validate-config examples/discussions/public-package-readme/public-package-readme.config.json --json
-bin/providers-discuss build-input-pack \
-  --config examples/discussions/public-package-readme/public-package-readme.config.json \
-  --output-dir examples/discussions/public-package-readme/input-pack
 ```
 
 The builder records paths, hashes, headings, bounded excerpts, and omission
