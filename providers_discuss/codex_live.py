@@ -106,7 +106,12 @@ def _run_codex(
     for path in (answer_path, stdout_path, stderr_path, status_path, proof_path):
         path.parent.mkdir(parents=True, exist_ok=True)
 
-    command = _codex_command(codex_bin=codex_bin, seat=seat, base=base, answer_path=answer_path)
+    command = _codex_command(
+        codex_bin=codex_bin,
+        seat=seat,
+        base=base.resolve(),
+        answer_path=answer_path.resolve(),
+    )
     started_at = utc_now()
     timed_out = False
     exit_code: int | None = None
@@ -119,7 +124,7 @@ def _run_codex(
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            cwd=str(base),
+            cwd=str(base.resolve()),
             timeout=timeout_seconds,
             env=_provider_env(),
         )

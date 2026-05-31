@@ -48,7 +48,7 @@ def run_claude_team_agents_smoke(
         raise ValueError(f"claude bin missing: {claude_bin}")
     if not os.access(claude_bin, os.X_OK):
         raise ValueError(f"claude bin is not executable: {claude_bin}")
-    launch_cwd = launch_cwd or base
+    launch_cwd = (launch_cwd or base).resolve()
     if not launch_cwd.exists():
         raise ValueError(f"launch cwd missing: {launch_cwd}")
     if not launch_cwd.is_dir():
@@ -91,7 +91,7 @@ def run_claude_team_agents_smoke(
         team_name=team_name,
         teammates=teammates,
         required_direct_messages=required_direct_messages,
-        run_root=base,
+        run_root=base.resolve(),
         answer_rel=answer_rel,
         status_rel=status_rel,
         trigger_mode=trigger_mode,
@@ -124,11 +124,11 @@ def run_claude_team_agents_smoke(
             trust_accepted,
         ) = _spawn_pty(
             claude_bin=claude_bin,
-            run_root=base,
+            run_root=base.resolve(),
             launch_cwd=launch_cwd,
             prompt=prompt,
-            answer_path=answer_path,
-            status_path=status_path,
+            answer_path=answer_path.resolve(),
+            status_path=status_path.resolve(),
             auto_trust=auto_trust,
             timeout_seconds=effective_timeout,
             extra_env=extra_env,
@@ -174,6 +174,14 @@ def run_claude_team_agents_smoke(
     status = _load_status(status_path) or status
 
     session_tool_counts = _session_tool_counts(base, session_jsonl_rels, team_name)
+    status = _recover_missing_status_from_session_evidence(
+        status,
+        session_tool_counts=session_tool_counts,
+        required_teammates=teammates,
+        required_direct_messages=required_direct_messages,
+        status_path=status_path,
+        answer_path=answer_path,
+    )
     proof = _build_proof(
         status=status,
         team_name=team_name,
@@ -661,6 +669,60 @@ def _team_failure_classification(blocked_reason: str) -> str:
     return FAILURE_PROOF_FAILED
 
 
+def _recover_missing_status_from_session_evidence(
+    status: dict[str, Any],
+    *,
+    session_tool_counts: dict[str, int],
+    required_teammates: list[str],
+    required_direct_messages: int,
+    status_path: Path,
+    answer_path: Path,
+) -> dict[str, Any]:
+    if status.get("blocked_reason") != "status_json_missing":
+        return status
+    if not answer_path.exists():
+        return status
+    try:
+        answer_text = answer_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return status
+    if COMPLETION_MARKER not in answer_text:
+        return status
+    required_tasks = len(required_teammates)
+    required_agents = len(required_teammates)
+    if session_tool_counts["team_create"] < 1:
+        return status
+    if session_tool_counts["task_create"] < required_tasks:
+        return status
+    if session_tool_counts["agent_with_team_name"] < required_agents:
+        return status
+    if session_tool_counts["send_message"] < required_direct_messages:
+        return status
+
+    recovered = dict(status)
+    recovered.update(
+        {
+            "verdict": "admitted",
+            "blocked_reason": "",
+            "failure_classification": "",
+            "status": "completed",
+            "team_create_used": True,
+            "task_create_count": max(_int(status.get("task_create_count")), session_tool_counts["task_create"]),
+            "agent_calls_with_team_name": max(_int(status.get("agent_calls_with_team_name")), session_tool_counts["agent_with_team_name"]),
+            "direct_teammate_messages_required": _int(status.get("direct_teammate_messages_required")) or required_direct_messages,
+            "direct_teammate_messages_observed": max(
+                _int(status.get("direct_teammate_messages_observed")),
+                session_tool_counts["send_message"],
+            ),
+            "ordinary_agent_delegation_only": False,
+            "summary_only_delegation": False,
+            "status_json_missing_recovered_from_session_jsonl": True,
+        }
+    )
+    write_json(status_path, recovered)
+    return recovered
+
+
 def _build_proof(
     *,
     status: dict[str, Any],
@@ -822,18 +884,43 @@ def _int(value: Any) -> int:
 def _append_summary(base: Path, round_id: str, seat_id: str, team_name: str, proof_rel: str, status: str, trigger_mode: str = "prompt_only") -> None:
     summary_path = base / "summary.md"
     existing = summary_path.read_text(encoding="utf-8") if summary_path.exists() else "# kdh-providers-discuss Run\n"
-    block = f"""
-
-## Claude-K Team Agents Smoke
-
-- evidence_type: `live claude_k_team_agents smoke`
-- status: `{status}`
-- round_id: `{round_id}`
-- seat_id: `{seat_id}`
-- team_name: `{team_name}`
-- trigger_mode: `{trigger_mode}`
-- proof: `{proof_rel}`
-- boundary: PoC proof only; not normal runner promotion
-"""
-    summary_path.write_text(existing.rstrip() + block + "\n", encoding="utf-8")
+    block = "\n".join(
+        [
+            "## Claude-K Team Agents Smoke",
+            "",
+            "- evidence_type: `live claude_k_team_agents smoke`",
+            f"- status: `{status}`",
+            f"- round_id: `{round_id}`",
+            f"- seat_id: `{seat_id}`",
+            f"- team_name: `{team_name}`",
+            f"- trigger_mode: `{trigger_mode}`",
+            f"- proof: `{proof_rel}`",
+            "- boundary: PoC proof only; not normal runner promotion",
+            "",
+        ]
+    )
+    existing = _remove_existing_summary_blocks(existing, round_id=round_id, seat_id=seat_id, proof_rel=proof_rel)
+    summary_path.write_text(existing.rstrip() + "\n\n" + block, encoding="utf-8")
     write_artifact_hash(base, "summary.md")
+
+
+def _remove_existing_summary_blocks(existing: str, *, round_id: str, seat_id: str, proof_rel: str) -> str:
+    lines = existing.splitlines()
+    output: list[str] = []
+    index = 0
+    while index < len(lines):
+        if lines[index] != "## Claude-K Team Agents Smoke":
+            output.append(lines[index])
+            index += 1
+            continue
+        end = index + 1
+        while end < len(lines) and not lines[end].startswith("## "):
+            end += 1
+        block = lines[index:end]
+        block_text = "\n".join(block)
+        same_seat = f"- round_id: `{round_id}`" in block_text and f"- seat_id: `{seat_id}`" in block_text
+        same_proof = f"- proof: `{proof_rel}`" in block_text
+        if not (same_seat or same_proof):
+            output.extend(block)
+        index = end
+    return "\n".join(output).rstrip() + "\n"

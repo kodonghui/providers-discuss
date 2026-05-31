@@ -99,9 +99,14 @@ cat > "${fake_gemini}" <<'PY'
 import json
 import os
 import sys
+from pathlib import Path
 
 prompt = sys.stdin.read()
 argv = " ".join(sys.argv)
+counter = os.environ.get("KDH_FAKE_GEMINI_COUNTER")
+if counter:
+    path = Path(counter)
+    path.write_text(str((int(path.read_text() or "0") if path.exists() else 0) + 1), encoding="utf-8")
 if os.environ.get("GEMINI_CLI_TRUST_WORKSPACE") != "true":
     print("untrusted directory: GEMINI_CLI_TRUST_WORKSPACE=true required", file=sys.stderr)
     raise SystemExit(23)
@@ -135,6 +140,10 @@ runtime = {
     },
 }
 (cwd / "fake-claude-runtime.json").write_text(json.dumps(runtime, indent=2, sort_keys=True), encoding="utf-8")
+counter = os.environ.get("KDH_FAKE_CLAUDE_COUNTER")
+if counter:
+    path = Path(counter)
+    path.write_text(str((int(path.read_text() or "0") if path.exists() else 0) + 1), encoding="utf-8")
 
 answer = Path(os.environ["KDH_PROVIDER_DISCUSS_ANSWER_PATH"])
 status = Path(os.environ["KDH_PROVIDER_DISCUSS_STATUS_PATH"])
@@ -203,10 +212,15 @@ fake_codex="${tmp}/fake-codex"
 cat > "${fake_codex}" <<'PY'
 #!/usr/bin/env python3
 import json
+import os
 import sys
 from pathlib import Path
 
 prompt = sys.stdin.read()
+counter = os.environ.get("KDH_FAKE_CODEX_COUNTER")
+if counter:
+    path = Path(counter)
+    path.write_text(str((int(path.read_text() or "0") if path.exists() else 0) + 1), encoding="utf-8")
 output = None
 for index, item in enumerate(sys.argv):
     if item in {"-o", "--output-last-message"} and index + 1 < len(sys.argv):
@@ -595,6 +609,55 @@ from pathlib import Path
 run = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 assert run["state"] == "round_outputs_collected"
 assert run["current_round"] == "R1"
+PY
+python3 - "${work}/runs/${mixed_run}" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+run_root = Path(sys.argv[1])
+run_path = run_root / "run.json"
+run = json.loads(run_path.read_text(encoding="utf-8"))
+run["state"] = "failed"
+run["current_round"] = "R1"
+run_path.write_text(json.dumps(run, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+status_path = run_root / "logs/round-R1/claude_team_required.status.json"
+status = json.loads(status_path.read_text(encoding="utf-8"))
+status["status"] = "failed"
+status["verdict"] = "failed"
+status["blocked_reason"] = "simulated_retry"
+status["failure_classification"] = "simulated_retry"
+status_path.write_text(json.dumps(status, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+PY
+HOME="${tmp}/fake-claude-home-mixed-retry" \
+KDH_FAKE_CODEX_COUNTER="${work}/codex-retry-count" \
+KDH_FAKE_CLAUDE_COUNTER="${work}/claude-retry-count" \
+KDH_FAKE_GEMINI_COUNTER="${work}/gemini-retry-count" \
+"${cmd}" run-round "${mixed_run}" \
+  --root "${work}/runs" \
+  --round R1 \
+  --mode live-dispatch \
+  --cli-path "codex=${fake_codex}" \
+  --cli-path "claude=${fake_claude}" \
+  --cli-path "gemini_cli=${fake_gemini}" > "${work}/mixed-live-retry.out"
+python3 - "${work}" "${work}/runs/${mixed_run}/events.jsonl" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+work = Path(sys.argv[1])
+events_path = Path(sys.argv[2])
+def count(name: str) -> int:
+    path = work / name
+    return int(path.read_text(encoding="utf-8")) if path.exists() else 0
+assert count("codex-retry-count") == 0
+assert count("gemini-retry-count") == 0
+assert count("claude-retry-count") == 1
+events = [json.loads(line) for line in events_path.read_text(encoding="utf-8").splitlines()]
+assert any(event.get("type") == "provider.reused" and event.get("actor") == "codex_required" for event in events)
+assert any(event.get("type") == "provider.reused" and event.get("actor") == "gemini_required" for event in events)
+summary = (events_path.parent / "summary.md").read_text(encoding="utf-8")
+assert summary.count("- round_id: `R1`\n- seat_id: `claude_team_required`") == 1
 PY
 
 full_run="$("${cmd}" init \

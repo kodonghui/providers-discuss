@@ -1190,22 +1190,39 @@ def run_round_live_dispatch(base: Path, run: dict[str, Any], spec: dict[str, Any
     round_id = spec["round_id"]
     seats = provider_seats(base)
     manifest_lines = ["# Raw Output Manifest", ""]
-    append_event(base, "round.live_dispatch_started", run_id=run["run_id"], round_id=round_id, seats=[seat["seat_id"] for seat in seats])
     indexed_results: dict[int, dict[str, Any]] = {}
-    with ThreadPoolExecutor(max_workers=max(1, len(seats))) as executor:
-        futures = {
-            executor.submit(_live_dispatch_seat, base, run, spec, seat, cli_overrides): index
-            for index, seat in enumerate(seats)
-        }
-        for future in as_completed(futures):
-            indexed_results[futures[future]] = future.result()
+    seats_to_dispatch: list[tuple[int, dict[str, Any]]] = []
+    for index, seat in enumerate(seats):
+        reused = _completed_live_dispatch_result(base=base, run=run, spec=spec, seat=seat)
+        if reused is None:
+            seats_to_dispatch.append((index, seat))
+        else:
+            indexed_results[index] = reused
+    append_event(
+        base,
+        "round.live_dispatch_started",
+        run_id=run["run_id"],
+        round_id=round_id,
+        seats=[seat["seat_id"] for seat in seats],
+        dispatch_seats=[seat["seat_id"] for _, seat in seats_to_dispatch],
+        reused_completed_seats=[result["seat_id"] for result in indexed_results.values()],
+    )
+    if seats_to_dispatch:
+        with ThreadPoolExecutor(max_workers=len(seats_to_dispatch)) as executor:
+            futures = {
+                executor.submit(_live_dispatch_seat, base, run, spec, seat, cli_overrides): index
+                for index, seat in seats_to_dispatch
+            }
+            for future in as_completed(futures):
+                indexed_results[futures[future]] = future.result()
     results = [indexed_results[index] for index in range(len(seats))]
     for result in results:
         seat_id = result["seat_id"]
         manifest_lines.append(
-            "- round: `{round}` seat: `{seat}` mode: `live-dispatch` status: `{status}` answer: `{answer}` status_path: `{status_path}` proof: `{proof}` failure: `{failure}`".format(
+            "- round: `{round}` seat: `{seat}` mode: `live-dispatch` reused: `{reused}` status: `{status}` answer: `{answer}` status_path: `{status_path}` proof: `{proof}` failure: `{failure}`".format(
                 round=round_id,
                 seat=seat_id,
+                reused=result.get("reused") is True,
                 status=result["status"],
                 answer=result["answer_path"] or "none",
                 status_path=result["status_path"],
@@ -1213,11 +1230,14 @@ def run_round_live_dispatch(base: Path, run: dict[str, Any], spec: dict[str, Any
                 failure=result["failure_classification"] or "none",
             )
         )
-        event_type = (
-            "provider.completed"
-            if result["status"] == "completed"
-            else ("provider.skipped" if result["status"] == "skipped" else ("provider.pending" if result["status"] == "pending" else "provider.failed"))
-        )
+        if result.get("reused") is True:
+            event_type = "provider.reused"
+        else:
+            event_type = (
+                "provider.completed"
+                if result["status"] == "completed"
+                else ("provider.skipped" if result["status"] == "skipped" else ("provider.pending" if result["status"] == "pending" else "provider.failed"))
+            )
         append_event(
             base,
             event_type,
@@ -1291,6 +1311,48 @@ def run_round_live_dispatch(base: Path, run: dict[str, Any], spec: dict[str, Any
     save_run(base, run)
     print(f"round {round_id}: live dispatch completed")
     return 0
+
+
+def _completed_live_dispatch_result(base: Path, run: dict[str, Any], spec: dict[str, Any], seat: dict[str, Any]) -> dict[str, Any] | None:
+    round_id = spec["round_id"]
+    seat_id = str(seat.get("seat_id") or "")
+    status_rel = f"logs/round-{round_id}/{seat_id}.status.json"
+    answer_rel = f"answers/round-{round_id}/{seat_id}.md"
+    status_path = base / status_rel
+    if not status_path.exists():
+        return None
+    try:
+        status = read_json(status_path)
+    except (OSError, ValueError, json.JSONDecodeError):
+        return None
+    if not isinstance(status, dict):
+        return None
+    if status.get("status") != "completed":
+        return None
+    answer_from_status = str(status.get("answer_path") or answer_rel)
+    proof_from_status = str(status.get("proof_path") or f"logs/round-{round_id}/{seat_id}.proof.json")
+    if not answer_from_status or not (base / answer_from_status).exists():
+        return None
+    if not proof_from_status or not (base / proof_from_status).exists():
+        return None
+    return {
+        "schema": ADAPTER_RESULT_SCHEMA,
+        "seat_id": seat_id,
+        "provider": status.get("provider") or seat.get("provider", ""),
+        "transport": status.get("transport") or seat.get("transport", ""),
+        "model": status.get("model") or seat.get("model") or (seat.get("execution") if isinstance(seat.get("execution"), dict) else {}).get("model") or "",
+        "status": "completed",
+        "answer_path": answer_from_status,
+        "status_path": status_rel,
+        "proof_path": proof_from_status,
+        "log_path": status.get("log_path", ""),
+        "exit_code": status.get("exit_code"),
+        "failure_classification": "",
+        "required": seat.get("required", True) is not False,
+        "refs": [answer_from_status, status_rel, proof_from_status],
+        "adapter": adapter_summary(seat),
+        "reused": True,
+    }
 
 
 def _live_dispatch_seat(
