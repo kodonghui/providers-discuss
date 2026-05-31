@@ -24,6 +24,8 @@ from .provider_adapters import (
 
 COMPLETION_MARKER = "KDH_GEMINI_DONE"
 DEFAULT_GEMINI_MODEL = "auto"
+GEMINI_TRUST_WORKSPACE_ENV = "GEMINI_CLI_TRUST_WORKSPACE"
+GEMINI_TRUST_WORKSPACE_VALUE = "true"
 
 
 def run_gemini_headless_smoke(
@@ -194,6 +196,8 @@ def _run_gemini(
     command = [str(gemini_bin), "--prompt", instruction, "--output-format", "json"]
     if model:
         command.extend(["--model", model])
+    provider_env = _provider_env()
+    workspace_trust = _workspace_trust_metadata(provider_env)
     started_at = utc_now()
     timed_out = False
     exit_code: int | None = None
@@ -208,7 +212,7 @@ def _run_gemini(
             stderr=subprocess.PIPE,
             cwd=str(base),
             timeout=timeout_seconds,
-            env=_provider_env(),
+            env=provider_env,
         )
         exit_code = completed.returncode
         stdout = completed.stdout or ""
@@ -284,6 +288,7 @@ def _run_gemini(
         "degraded": degraded,
         "model": model,
         "command": _safe_command(command),
+        "workspace_trust": workspace_trust,
         "started_at": started_at,
         "completed_at": utc_now(),
         "secret_policy": "OAuth tokens, cookies, provider-home raw config, credential file bodies, and shell history are not collected or stored.",
@@ -306,6 +311,7 @@ def _run_gemini(
         "blocked_reason": failure if failure in {FAILURE_INSTALLED_NOT_LOGGED_IN, FAILURE_MISSING_CLI} else "",
         "model": model,
         "output_format": "json",
+        "workspace_trust": workspace_trust,
         "json_parse_status": json_status,
         "degraded": degraded,
         "started_at": started_at,
@@ -381,6 +387,7 @@ def _write_missing_cli_result(
         "timeout_seconds": timeout_seconds,
         "failure_classification": FAILURE_MISSING_CLI,
         "command": ["gemini", "--prompt", "...", "--output-format", "json"],
+        "workspace_trust": _workspace_trust_metadata(_provider_env()),
         "secret_policy": "OAuth tokens, cookies, provider-home raw config, credential file bodies, and shell history are not collected or stored.",
     }
     proof_payload = {
@@ -393,6 +400,7 @@ def _write_missing_cli_result(
         "timed_out": False,
         "killed": False,
         "blocked_reason": FAILURE_MISSING_CLI,
+        "workspace_trust": _workspace_trust_metadata(_provider_env()),
     }
     write_json(base / status_rel, status_payload)
     status_sha = write_artifact_hash(base, status_rel)
@@ -523,7 +531,17 @@ def _provider_env() -> dict[str, str]:
     env = dict(os.environ)
     env.setdefault("NO_COLOR", "1")
     env.setdefault("CI", "1")
+    env.setdefault(GEMINI_TRUST_WORKSPACE_ENV, GEMINI_TRUST_WORKSPACE_VALUE)
     return env
+
+
+def _workspace_trust_metadata(env: dict[str, str]) -> dict[str, str]:
+    return {
+        "env": GEMINI_TRUST_WORKSPACE_ENV,
+        "value": env.get(GEMINI_TRUST_WORKSPACE_ENV, ""),
+        "scope": "child_process_only",
+        "reason": "Gemini CLI headless mode may reject untrusted directories before it reaches auth.",
+    }
 
 
 def _safe_command(command: list[str]) -> list[str]:

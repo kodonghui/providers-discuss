@@ -118,7 +118,7 @@ class ProviderAdapter:
             ]
         if self.transport == "gemini_cli":
             return [
-                "cat {prompt} | gemini --prompt 'Execute the provider-discuss prompt from stdin.' "
+                "cat {prompt} | GEMINI_CLI_TRUST_WORKSPACE=true gemini --prompt 'Execute the provider-discuss prompt from stdin.' "
                 "--output-format json --model {model} > {answer}".format(
                     prompt=prompt_path,
                     model=model or "configured",

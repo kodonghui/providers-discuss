@@ -317,9 +317,12 @@ bin/providers-discuss run-round <run-id> --root <runs> --round R1 --mode live-di
 ```
 
 Gemini uses the official headless CLI shape `cat prompt.md | gemini --prompt
-... --output-format json --model ...`. The runner stores stdout, stderr, parsed
-JSON, answer, status, and transport proof artifacts. It never copies Gemini
-credential files or API keys into reports.
+... --output-format json --model ...`. The runner sets
+`GEMINI_CLI_TRUST_WORKSPACE=true` only for the child Gemini process because
+Gemini CLI may reject an untrusted directory before reaching auth. Reports and
+proofs record that child-process workspace trust was applied. The runner stores
+stdout, stderr, parsed JSON, answer, status, and transport proof artifacts. It
+never copies Gemini credential files or API keys into reports.
 
 ## Claude Team Agents
 

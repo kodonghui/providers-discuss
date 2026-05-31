@@ -144,6 +144,10 @@ proof files, gates, hashes, and orchestrator prompt deltas under a run root.
 - Run `auth-preflight` before live provider work. It reports readiness and login
   hints, but must not capture OAuth tokens, cookies, provider-home raw config,
   browser state, or shell history.
+  Gemini CLI workspace trust is runner-owned: `auth-preflight`,
+  `smoke-gemini-headless`, and Gemini live dispatch set
+  `GEMINI_CLI_TRUST_WORKSPACE=true` only for the child Gemini process and
+  record that in reports/proofs.
 - Start with `run-round --mode dry-run` to produce prompt/status/proof preview
   artifacts.
 - Use `agent-profiles` before profile-aware runs to list compatible prompt-only

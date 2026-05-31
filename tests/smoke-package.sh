@@ -97,10 +97,14 @@ fake_gemini="${tmp}/fake-gemini"
 cat > "${fake_gemini}" <<'PY'
 #!/usr/bin/env python3
 import json
+import os
 import sys
 
 prompt = sys.stdin.read()
 argv = " ".join(sys.argv)
+if os.environ.get("GEMINI_CLI_TRUST_WORKSPACE") != "true":
+    print("untrusted directory: GEMINI_CLI_TRUST_WORKSPACE=true required", file=sys.stderr)
+    raise SystemExit(23)
 if "GEMINI_AUTH_OK" in argv:
     print(json.dumps({"response": "GEMINI_AUTH_OK"}))
     raise SystemExit(0)

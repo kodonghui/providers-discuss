@@ -84,6 +84,11 @@ This is the canonical Codex skill for the `providers-discuss` CLI.
 - Prefer config-first runs with `providers-discuss validate-config`, then
   `providers-discuss init --config`.
 - Run `providers-discuss auth-preflight` before live provider work.
+  For Gemini CLI seats, trust handling is runner-owned: `auth-preflight`,
+  `smoke-gemini-headless`, and Gemini live dispatch set
+  `GEMINI_CLI_TRUST_WORKSPACE=true` for the child Gemini process only and
+  record that in reports/proofs. Do not ask the user to remember this env var
+  unless they are bypassing the runner.
 - Start with `providers-discuss run-round --mode dry-run`.
 - Use `providers-discuss advance` to continue through every legal runner-owned
   step until the run finishes or reaches a real blocker.

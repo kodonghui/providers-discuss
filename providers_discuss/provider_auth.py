@@ -12,6 +12,8 @@ from .artifacts import utc_now, write_json
 
 
 AUTH_PREFLIGHT_SCHEMA = "providers-discuss.provider-auth-preflight.v1"
+GEMINI_TRUST_WORKSPACE_ENV = "GEMINI_CLI_TRUST_WORKSPACE"
+GEMINI_TRUST_WORKSPACE_VALUE = "true"
 
 STATUS_INSTALLED_LOGGED_IN = "installed_logged_in"
 STATUS_INSTALLED_NOT_LOGGED_IN = "installed_not_logged_in"
@@ -151,6 +153,7 @@ def inspect_seat_auth(
         "login_hint": login_hint,
         "login_url_action": login_url_action,
         "login_url_policy": "URL-first; relay official provider CLI URLs transiently and do not store tokens, cookies, credential files, or provider-home raw config.",
+        "workspace_trust": workspace_trust_for_transport(transport),
         "blocker": blocker,
         "optional_issue": optional_issue,
         "next_action": _next_action(required=required, status=status, login_hint=login_hint),
@@ -202,6 +205,16 @@ def auth_report_markdown(payload: dict[str, Any]) -> str:
         lines.append("Use official provider CLI login URLs. Do not paste or store OAuth tokens, cookies, credential files, provider-home raw config, browser state, or shell history.")
         for seat in pending_url_actions:
             lines.append(f"- `{seat.get('seat_id', '')}`: {seat.get('login_url_action', seat.get('login_hint', ''))}")
+    workspace_trust_seats = [
+        seat for seat in payload.get("seats", [])
+        if seat.get("workspace_trust", {}).get("env") == GEMINI_TRUST_WORKSPACE_ENV
+    ]
+    if workspace_trust_seats:
+        lines.extend(["", "## Workspace Trust Preconditions", ""])
+        lines.append("Gemini headless probes run with child-process workspace trust only; provider-home config is not read or mutated.")
+        for seat in workspace_trust_seats:
+            trust = seat.get("workspace_trust", {})
+            lines.append(f"- `{seat.get('seat_id', '')}`: `{trust.get('env', '')}={trust.get('value', '')}` ({trust.get('scope', '')})")
     return "\n".join(lines) + "\n"
 
 
@@ -211,6 +224,17 @@ def login_hint_for_transport(transport: str) -> str:
 
 def login_url_action_for_transport(transport: str) -> str:
     return LOGIN_URL_ACTION_BY_TRANSPORT.get(transport, "Use the official provider CLI login flow and show the emitted URL to the user.")
+
+
+def workspace_trust_for_transport(transport: str) -> dict[str, str]:
+    if transport != "gemini_cli":
+        return {}
+    return {
+        "env": GEMINI_TRUST_WORKSPACE_ENV,
+        "value": GEMINI_TRUST_WORKSPACE_VALUE,
+        "scope": "child_process_only",
+        "reason": "Gemini CLI headless mode may reject untrusted directories before it reaches auth.",
+    }
 
 
 def _resolve_cli_path(*, seat: dict[str, Any], cli_overrides: dict[str, Path]) -> str:
@@ -234,7 +258,7 @@ def _probe_login_status(*, seat: dict[str, Any], transport: str, cli_path: str, 
     if not commands:
         return STATUS_INSTALLED_NOT_LOGGED_IN, "installed_only"
     for probe_name, command in commands:
-        result = _run_probe(command, timeout_seconds=timeout_seconds)
+        result = _run_probe(command, probe_name=probe_name, timeout_seconds=timeout_seconds)
         if result is None:
             continue
         status = _status_from_probe(probe_name=probe_name, returncode=result.returncode, stdout=result.stdout, stderr=result.stderr)
@@ -257,10 +281,12 @@ def _probe_commands(*, seat: dict[str, Any], transport: str, cli_path: str) -> l
     return []
 
 
-def _run_probe(command: list[str], *, timeout_seconds: int) -> subprocess.CompletedProcess[str] | None:
+def _run_probe(command: list[str], *, probe_name: str, timeout_seconds: int) -> subprocess.CompletedProcess[str] | None:
     env = dict(os.environ)
     env.setdefault("NO_COLOR", "1")
     env.setdefault("CI", "1")
+    if probe_name == "gemini_headless_probe":
+        env.setdefault(GEMINI_TRUST_WORKSPACE_ENV, GEMINI_TRUST_WORKSPACE_VALUE)
     try:
         return subprocess.run(
             command,
