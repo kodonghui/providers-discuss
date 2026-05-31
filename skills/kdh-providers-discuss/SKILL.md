@@ -1,13 +1,11 @@
 ---
 name: kdh-providers-discuss
-description: "Alias for providers-discuss. Use when the user asks for KDH provider discussion workflows with dynamic provider seats, rounds, auth preflight, input packs, gates, prompt deltas, and Claude Team Agents workflows."
+description: "Use kdh-providers-discuss when a user wants to configure, run, inspect, or package a file-backed multi-provider discussion with dynamic rounds, provider seats, auth preflight, input packs, gates, prompt deltas, and Claude Team Agents workflows."
 ---
 
 # kdh-providers-discuss
 
-This is a compatibility alias for the public `providers-discuss` skill.
-
-Use it exactly like `providers-discuss`:
+This is the canonical Codex skill for the `providers-discuss` CLI.
 
 - Start with the same intake gate: language, round count, seat count,
   provider/model/effort choices, agent profiles or default, topic,

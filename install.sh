@@ -3,16 +3,17 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: ./install.sh [--prefix DIR] [--codex-home DIR] [--dry-run] [--uninstall]
+Usage: ./install.sh [--prefix DIR] [--codex-home DIR] [--with-public-alias] [--dry-run] [--uninstall]
 
 Installs the local providers-discuss command and Codex skill for the current user.
 Default prefix: $HOME/.local
 Default Codex home: $CODEX_HOME, or $HOME/.codex when CODEX_HOME is unset
 
-This installer only creates or removes local command and skill links. It
-installs both the public `providers-discuss` skill and the compatibility
-`kdh-providers-discuss` skill. It does not touch provider homes, OAuth files,
-Claude hooks, browser settings, cron, daemons, or global system directories.
+This installer only creates or removes local command and skill links. By
+default it installs only the canonical `kdh-providers-discuss` skill. Use
+`--with-public-alias` to also install the shorter `providers-discuss` alias.
+It does not touch provider homes, OAuth files, Claude hooks, browser settings,
+cron, daemons, or global system directories.
 EOF
 }
 
@@ -20,6 +21,7 @@ prefix="${HOME}/.local"
 codex_home="${CODEX_HOME:-${HOME}/.codex}"
 dry_run=0
 uninstall=0
+with_public_alias=0
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -30,6 +32,10 @@ while [ "$#" -gt 0 ]; do
     --codex-home)
       codex_home="${2:?missing value for --codex-home}"
       shift 2
+      ;;
+    --with-public-alias)
+      with_public_alias=1
+      shift
       ;;
     --dry-run)
       dry_run=1
@@ -56,7 +62,11 @@ bin_dir="${prefix}/bin"
 target="${bin_dir}/providers-discuss"
 source_cmd="${repo_root}/bin/providers-discuss"
 skill_dir="${codex_home}/skills"
-skill_names=(providers-discuss kdh-providers-discuss)
+skill_names=(kdh-providers-discuss)
+all_managed_skill_names=(providers-discuss kdh-providers-discuss)
+if [ "${with_public_alias}" -eq 1 ]; then
+  skill_names+=(providers-discuss)
+fi
 
 check_skill_target() {
   local name="$1"
@@ -107,12 +117,12 @@ remove_skill() {
 if [ "$uninstall" -eq 1 ]; then
   if [ "$dry_run" -eq 1 ]; then
     echo "would remove ${target}"
-    for skill_name in "${skill_names[@]}"; do
+    for skill_name in "${all_managed_skill_names[@]}"; do
       echo "would remove ${skill_dir}/${skill_name} when it links to ${repo_root}/skills/${skill_name}"
     done
   else
     rm -f "${target}"
-    for skill_name in "${skill_names[@]}"; do
+    for skill_name in "${all_managed_skill_names[@]}"; do
       remove_skill "${skill_name}"
     done
     echo "removed ${target}"
@@ -147,4 +157,8 @@ for skill_name in "${skill_names[@]}"; do
 done
 echo "installed ${target}"
 echo "Run: ${target} --help"
-echo "Restart Codex to load the providers-discuss and kdh-providers-discuss skills."
+if [ "${with_public_alias}" -eq 1 ]; then
+  echo "Restart Codex to load the providers-discuss and kdh-providers-discuss skills."
+else
+  echo "Restart Codex to load the kdh-providers-discuss skill."
+fi

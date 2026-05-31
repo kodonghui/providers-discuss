@@ -49,12 +49,20 @@ providers-discuss --help
 The installer creates local links for:
 
 - `$HOME/.local/bin/providers-discuss`
-- `$HOME/.codex/skills/providers-discuss`
 - `$HOME/.codex/skills/kdh-providers-discuss`
 
 It does not modify provider settings or install hooks. Restart Codex after
-installing so both skill names are loaded. `providers-discuss` is the public
-skill name; `kdh-providers-discuss` is a compatibility alias for KDH workflows.
+installing so the skill is loaded. `kdh-providers-discuss` is the canonical
+skill name.
+
+Optional shorter public alias:
+
+```bash
+./install.sh --with-public-alias
+```
+
+This also installs `$HOME/.codex/skills/providers-discuss`. Use it only when
+you intentionally want both skill names to appear.
 
 Uninstall:
 

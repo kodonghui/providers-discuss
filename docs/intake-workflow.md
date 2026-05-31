@@ -1,7 +1,8 @@
 # providers-discuss Intake Workflow
 
 This document records the CEO-requested first-run intake behavior for the
-public `providers-discuss` package and the KDH alias skill.
+portable `providers-discuss` package and the canonical `kdh-providers-discuss`
+Codex skill.
 
 ## CEO Request Transcript
 
