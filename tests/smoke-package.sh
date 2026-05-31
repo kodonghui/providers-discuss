@@ -44,6 +44,9 @@ test ! -e "${install_home}/.codex/skills/kdh-providers-discuss"
 for config in "${pkg}"/examples/*.config.json; do
   "${cmd}" validate-config "${config}" --json >/dev/null
 done
+"${cmd}" validate-config \
+  "${pkg}/examples/discussions/public-package-readme/public-package-readme.config.json" \
+  --json >/dev/null
 
 cat > "${tmp}/configure-answers.json" <<'EOF'
 {
@@ -197,6 +200,11 @@ printf '# Source\n\nKeep decisions tied to artifacts.\n' > "${work}/inputs/sourc
   --config "${pkg}/examples/minimal-manual.config.json" \
   --source-dir "${work}/inputs" \
   --output-dir "${work}/input-pack" >/dev/null
+"${cmd}" build-input-pack \
+  --config "${pkg}/examples/discussions/public-package-readme/public-package-readme.config.json" \
+  --output-dir "${work}/public-package-readme-input-pack" >/dev/null
+test -f "${work}/public-package-readme-input-pack/input-pack.md"
+grep -q "Write the public providers-discuss README.md" "${work}/public-package-readme-input-pack/input-pack.md"
 
 run_id="$("${cmd}" init \
   --config "${pkg}/examples/minimal-manual.config.json" \

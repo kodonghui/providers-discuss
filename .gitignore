@@ -9,6 +9,8 @@ venv/
 .kdh/
 runs/
 input-pack/
+!examples/discussions/public-package-readme/input-pack/
+!examples/discussions/public-package-readme/input-pack/input-pack.md
 auth-report/
 adapter-capabilities/
 manual-answer.md
