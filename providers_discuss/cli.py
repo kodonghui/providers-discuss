@@ -6,6 +6,7 @@ import io
 import json
 import shutil
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
@@ -46,6 +47,7 @@ from .agent_profiles import (
 )
 from .claude_smoke import run_claude_k_smoke
 from .claude_team_agents_smoke import run_claude_team_agents_smoke
+from .codex_live import run_codex_live_dispatch
 from .gemini_smoke import run_gemini_headless_smoke, run_gemini_live_dispatch
 from .claude_workspace_trust import (
     inspect_hook_config,
@@ -76,10 +78,13 @@ from .model_refresh import refresh_models
 from .proofs import validate_team_agents_proof, validate_transport_proof
 from .provider_auth import inspect_seat_auth, login_hint_for_transport, parse_cli_path_overrides, run_auth_preflight
 from .provider_adapters import (
+    ADAPTER_RESULT_SCHEMA,
     ADAPTER_PREVIEW_SCHEMA,
+    ADAPTER_STATUS_SCHEMA,
     FAILURE_INSTALLED_NOT_LOGGED_IN,
     FAILURE_MISSING_CLI,
     FAILURE_OPTIONAL_PROVIDER_SKIPPED,
+    FAILURE_PROOF_FAILED,
     FAILURE_UNSUPPORTED_LIVE_DISPATCH,
     adapter_for_seat,
     adapter_summary,
@@ -137,7 +142,7 @@ def main(argv: list[str] | None = None) -> int:
     configure.add_argument("--run-auth-preflight", action="store_true")
     configure.add_argument("--auth-report-dir", type=Path)
     configure.add_argument("--cli-path", action="append", default=[], help="auth probe CLI override as key=/path")
-    configure.add_argument("--auth-timeout-seconds", type=int, default=3)
+    configure.add_argument("--auth-timeout-seconds", type=int, default=30)
     configure.add_argument("--json", action="store_true")
 
     model_refresh = sub.add_parser("model-refresh")
@@ -149,7 +154,7 @@ def main(argv: list[str] | None = None) -> int:
     auth_preflight.add_argument("config", type=Path)
     auth_preflight.add_argument("--report-dir", type=Path, default=Path("config"))
     auth_preflight.add_argument("--cli-path", action="append", default=[], help="auth probe CLI override as key=/path")
-    auth_preflight.add_argument("--timeout-seconds", type=int, default=3)
+    auth_preflight.add_argument("--timeout-seconds", type=int, default=30)
     auth_preflight.add_argument("--json", action="store_true")
 
     build_input = sub.add_parser("build-input-pack")
@@ -168,7 +173,7 @@ def main(argv: list[str] | None = None) -> int:
     adapter_capabilities.add_argument("--config", type=Path, help="providers-discuss.public-config.v1 JSON file")
     adapter_capabilities.add_argument("--report-dir", type=Path, help="write adapter-capabilities JSON/Markdown to this directory")
     adapter_capabilities.add_argument("--cli-path", action="append", default=[], help="auth probe CLI override as key=/path")
-    adapter_capabilities.add_argument("--auth-timeout-seconds", type=int, default=3)
+    adapter_capabilities.add_argument("--auth-timeout-seconds", type=int, default=30)
     adapter_capabilities.add_argument("--no-auth-probe", action="store_true", help="do not execute provider auth probes; report CLI/login hints only")
     adapter_capabilities.add_argument("--json", action="store_true")
 
@@ -1185,31 +1190,18 @@ def run_round_live_dispatch(base: Path, run: dict[str, Any], spec: dict[str, Any
     round_id = spec["round_id"]
     seats = provider_seats(base)
     manifest_lines = ["# Raw Output Manifest", ""]
-    results: list[dict[str, Any]] = []
-    for seat in seats:
-        seat_id = seat["seat_id"]
-        if seat.get("transport") == "gemini_cli":
-            result = run_gemini_live_dispatch(
-                base=base,
-                run=run,
-                spec=spec,
-                seat=seat,
-                gemini_bin=_resolve_live_cli(seat=seat, cli_overrides=cli_overrides, default_name="gemini"),
-                timeout_seconds=effective_timeout_seconds(seat),
-            )
-        else:
-            prompt_result = write_round_prompt(base=base, run=run, spec=spec, seat=seat)
-            result = {
-                **prompt_result,
-                "status": "pending",
-                "answer_path": "",
-                "status_path": "",
-                "proof_path": "",
-                "exit_code": None,
-                "failure_classification": FAILURE_UNSUPPORTED_LIVE_DISPATCH,
-                "refs": prompt_result["refs"],
-            }
-        results.append(result)
+    append_event(base, "round.live_dispatch_started", run_id=run["run_id"], round_id=round_id, seats=[seat["seat_id"] for seat in seats])
+    indexed_results: dict[int, dict[str, Any]] = {}
+    with ThreadPoolExecutor(max_workers=max(1, len(seats))) as executor:
+        futures = {
+            executor.submit(_live_dispatch_seat, base, run, spec, seat, cli_overrides): index
+            for index, seat in enumerate(seats)
+        }
+        for future in as_completed(futures):
+            indexed_results[futures[future]] = future.result()
+    results = [indexed_results[index] for index in range(len(seats))]
+    for result in results:
+        seat_id = result["seat_id"]
         manifest_lines.append(
             "- round: `{round}` seat: `{seat}` mode: `live-dispatch` status: `{status}` answer: `{answer}` status_path: `{status_path}` proof: `{proof}` failure: `{failure}`".format(
                 round=round_id,
@@ -1299,6 +1291,139 @@ def run_round_live_dispatch(base: Path, run: dict[str, Any], spec: dict[str, Any
     save_run(base, run)
     print(f"round {round_id}: live dispatch completed")
     return 0
+
+
+def _live_dispatch_seat(
+    base: Path,
+    run: dict[str, Any],
+    spec: dict[str, Any],
+    seat: dict[str, Any],
+    cli_overrides: dict[str, Path],
+) -> dict[str, Any]:
+    transport = seat.get("transport")
+    if transport == "codex_exec_file":
+        return run_codex_live_dispatch(
+            base=base,
+            run=run,
+            spec=spec,
+            seat=seat,
+            codex_bin=_resolve_live_cli(seat=seat, cli_overrides=cli_overrides, default_name="codex"),
+            timeout_seconds=effective_timeout_seconds(seat),
+        )
+    if transport == "gemini_cli":
+        return run_gemini_live_dispatch(
+            base=base,
+            run=run,
+            spec=spec,
+            seat=seat,
+            gemini_bin=_resolve_live_cli(seat=seat, cli_overrides=cli_overrides, default_name="gemini"),
+            timeout_seconds=effective_timeout_seconds(seat),
+        )
+    if transport == "claude_k_team_agents":
+        claude_bin = _resolve_live_cli(seat=seat, cli_overrides=cli_overrides, default_name="claude")
+        if not claude_bin:
+            return _missing_live_cli_result(base=base, run=run, spec=spec, seat=seat, cli_name="claude")
+        result = run_claude_team_agents_smoke(
+            base=base,
+            run=run,
+            round_id=spec["round_id"],
+            seat=seat,
+            claude_bin=claude_bin,
+            launch_cwd=None,
+            auto_trust=True,
+            experimental_agent_teams=True,
+            timeout_seconds=None,
+            trigger_mode="prompt_only",
+            provider_result_artifacts=True,
+        )
+        return {
+            "schema": ADAPTER_RESULT_SCHEMA,
+            "seat_id": seat["seat_id"],
+            "provider": seat.get("provider", ""),
+            "transport": "claude_k_team_agents",
+            "model": seat.get("model") or seat.get("execution", {}).get("model") or "",
+            "status": "completed" if result["status"] == "pass" else "failed",
+            "answer_path": result.get("answer_path", ""),
+            "status_path": result.get("status_path", ""),
+            "proof_path": result["proof_path"],
+            "log_path": f"logs/round-{spec['round_id']}/{seat['seat_id']}.transcript.ansi",
+            "exit_code": None,
+            "failure_classification": "" if result["status"] == "pass" else FAILURE_PROOF_FAILED,
+            "required": seat.get("required", True) is not False,
+            "refs": [
+                ref
+                for ref in (
+                    result.get("answer_path", ""),
+                    result.get("status_path", ""),
+                    result.get("proof_path", ""),
+                )
+                if ref
+            ],
+            "adapter": adapter_summary(seat),
+        }
+    prompt_result = write_round_prompt(base=base, run=run, spec=spec, seat=seat)
+    return {
+        **prompt_result,
+        "status": "pending",
+        "answer_path": "",
+        "status_path": "",
+        "proof_path": "",
+        "exit_code": None,
+        "failure_classification": FAILURE_UNSUPPORTED_LIVE_DISPATCH,
+        "refs": prompt_result["refs"],
+    }
+
+
+def _missing_live_cli_result(*, base: Path, run: dict[str, Any], spec: dict[str, Any], seat: dict[str, Any], cli_name: str) -> dict[str, Any]:
+    prompt_result = write_round_prompt(base=base, run=run, spec=spec, seat=seat)
+    round_id = spec["round_id"]
+    seat_id = seat["seat_id"]
+    status_rel = prompt_result["status_path"]
+    proof_rel = prompt_result["proof_path"]
+    status_payload = {
+        "schema": ADAPTER_STATUS_SCHEMA,
+        "run_id": run["run_id"],
+        "round_id": round_id,
+        "seat_id": seat_id,
+        "provider": seat.get("provider", ""),
+        "transport": seat.get("transport", ""),
+        "adapter_id": adapter_summary(seat)["adapter_id"],
+        "mode": "live-dispatch",
+        "status": "failed",
+        "required": seat.get("required", True) is not False,
+        "answer_path": "",
+        "proof_path": proof_rel,
+        "exit_code": None,
+        "timed_out": False,
+        "failure_classification": FAILURE_MISSING_CLI,
+        "cli_name": cli_name,
+    }
+    proof_payload = {
+        "schema": "kdh.providers-discuss.transport-proof.v1",
+        "transport": seat.get("transport", ""),
+        "answer_path": "",
+        "status_path": status_rel,
+        "completion_marker": "",
+        "exit_code": None,
+        "timed_out": False,
+        "killed": False,
+        "blocked_reason": FAILURE_MISSING_CLI,
+    }
+    write_json(base / status_rel, status_payload)
+    status_sha = write_artifact_hash(base, status_rel)
+    write_json(base / proof_rel, proof_payload)
+    proof_sha = write_artifact_hash(base, proof_rel)
+    return {
+        **prompt_result,
+        "status": "failed",
+        "answer_path": "",
+        "status_path": status_rel,
+        "proof_path": proof_rel,
+        "exit_code": None,
+        "failure_classification": FAILURE_MISSING_CLI,
+        "refs": [*prompt_result["refs"], status_rel, proof_rel],
+        "sha256": {"prompt": prompt_result["sha256"], "status": status_sha, "proof": proof_sha},
+    }
 
 
 def cmd_gate(args: argparse.Namespace) -> int:
@@ -1969,9 +2094,7 @@ def cmd_advance(args: argparse.Namespace) -> int:
         if state == "round_outputs_collected":
             claim_map = base / "claims" / f"round-{current_round}-claim-map.json"
             if not claim_map.exists():
-                stop_reason = f"claim_map_needed:{claim_map.relative_to(base).as_posix()}"
-                exit_code = 2
-                break
+                _write_auto_claim_map(base=base, run=run, round_id=current_round)
             terminal = next_round_id(run, current_round) == ""
             rc = _advance_call(cmd_gate, argparse.Namespace(root=args.root, run_id=args.run_id, round=current_round, terminal=terminal), quiet=args.json)
             actions.append({"action": "gate", "round_id": current_round, "terminal": terminal, "status": "pass" if rc == 0 else "fail"})
@@ -1998,9 +2121,7 @@ def cmd_advance(args: argparse.Namespace) -> int:
                 continue
             if verdict in terminal_verdicts():
                 if not (base / "result.json").exists():
-                    stop_reason = "result_json_needed"
-                    exit_code = 2
-                    break
+                    _write_auto_result(base=base, run=run, final_round=current_round)
                 rc = _advance_call(cmd_finalize, argparse.Namespace(root=args.root, run_id=args.run_id), quiet=args.json)
                 actions.append({"action": "finalize", "status": "pass" if rc == 0 else "fail"})
                 if rc != 0:
@@ -2013,9 +2134,7 @@ def cmd_advance(args: argparse.Namespace) -> int:
             break
         if state == "finalizing":
             if not (base / "result.json").exists():
-                stop_reason = "result_json_needed"
-                exit_code = 2
-                break
+                _write_auto_result(base=base, run=run, final_round=current_round)
             rc = _advance_call(cmd_finalize, argparse.Namespace(root=args.root, run_id=args.run_id), quiet=args.json)
             actions.append({"action": "finalize", "status": "pass" if rc == 0 else "fail"})
             if rc != 0:
@@ -2060,6 +2179,80 @@ def _advance_call(func: Any, namespace: argparse.Namespace, *, quiet: bool) -> i
         return int(func(namespace))
     with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
         return int(func(namespace))
+
+
+def _write_auto_claim_map(*, base: Path, run: dict[str, Any], round_id: str) -> None:
+    claim_map_rel = f"claims/round-{round_id}-claim-map.json"
+    claim_map_path = base / claim_map_rel
+    if claim_map_path.exists():
+        return
+    claims: list[dict[str, Any]] = []
+    for index, seat in enumerate(provider_seats(base), start=1):
+        seat_id = str(seat.get("seat_id") or f"seat-{index}")
+        status_rel = f"logs/round-{round_id}/{seat_id}.status.json"
+        answer_rel = f"answers/round-{round_id}/{seat_id}.md"
+        status_path = base / status_rel
+        answer_path = base / answer_rel
+        if not status_path.exists() or not answer_path.exists():
+            continue
+        status = read_json(status_path)
+        if status.get("status") != "completed":
+            continue
+        claims.append(
+            {
+                "claim_id": f"CLM-{round_id}-{len(claims) + 1:03d}",
+                "claim": f"{seat_id} produced a completed provider answer for {round_id}.",
+                "claim_type": "provider_output",
+                "status": "supported",
+                "load_bearing": False,
+                "support": [answer_rel, status_rel],
+            }
+        )
+    payload = {
+        "schema": CLAIM_MAP_SCHEMA,
+        "run_id": run["run_id"],
+        "round_id": round_id,
+        "claims": claims,
+        "generated_by": "providers-discuss advance",
+        "generation_mode": "provider_output_receipts",
+    }
+    write_json(claim_map_path, payload)
+    write_artifact_hash(base, claim_map_rel)
+    append_event(base, "claim_map.auto_written", run_id=run["run_id"], round_id=round_id, refs=[claim_map_rel], claim_count=len(claims))
+
+
+def _write_auto_result(*, base: Path, run: dict[str, Any], final_round: str) -> None:
+    result_path = base / "result.json"
+    if result_path.exists():
+        return
+    answer_refs: list[dict[str, Any]] = []
+    for seat in provider_seats(base):
+        seat_id = str(seat.get("seat_id") or "")
+        answer_rel = f"answers/round-{final_round}/{seat_id}.md"
+        status_rel = f"logs/round-{final_round}/{seat_id}.status.json"
+        if (base / answer_rel).exists():
+            answer_refs.append(
+                {
+                    "seat_id": seat_id,
+                    "provider": seat.get("provider", ""),
+                    "transport": seat.get("transport", ""),
+                    "answer_path": answer_rel,
+                    "status_path": status_rel if (base / status_rel).exists() else "",
+                }
+            )
+    payload = {
+        "schema": "kdh.providers-discuss.result.v1",
+        "run_id": run["run_id"],
+        "status": "completed",
+        "objective": run.get("objective", ""),
+        "final_round": final_round,
+        "answer_refs": answer_refs,
+        "summary": "Auto-generated completion result from final-round provider answer artifacts.",
+        "generated_by": "providers-discuss advance",
+    }
+    write_json(result_path, payload)
+    write_artifact_hash(base, "result.json")
+    append_event(base, "result.auto_written", run_id=run["run_id"], round_id=final_round, refs=["result.json"], answer_count=len(answer_refs))
 
 
 def cmd_cancel(args: argparse.Namespace) -> int:

@@ -5,9 +5,15 @@ import json
 import random
 import shutil
 import string
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - fcntl is expected on the target Linux runtime.
+    fcntl = None  # type: ignore[assignment]
 
 
 RUN_SCHEMA = "kdh.providers-discuss.run.v1"
@@ -239,21 +245,22 @@ def save_run(base: Path, run: dict[str, Any]) -> None:
 
 def append_event(base: Path, event_type: str, **fields: Any) -> dict[str, Any]:
     path = base / "events.jsonl"
-    seq = 1
-    if path.exists():
-        with path.open("r", encoding="utf-8") as fh:
-            seq = sum(1 for line in fh if line.strip()) + 1
-    event = {
-        "schema": EVENT_SCHEMA,
-        "event_id": f"EVT-{seq:04d}",
-        "seq": seq,
-        "ts": utc_now(),
-        "type": event_type,
-        **fields,
-    }
-    with path.open("a", encoding="utf-8") as fh:
-        fh.write(json.dumps(event, ensure_ascii=False, sort_keys=True) + "\n")
-    return event
+    with _file_lock(base / ".locks" / "events.lock"):
+        seq = 1
+        if path.exists():
+            with path.open("r", encoding="utf-8") as fh:
+                seq = sum(1 for line in fh if line.strip()) + 1
+        event = {
+            "schema": EVENT_SCHEMA,
+            "event_id": f"EVT-{seq:04d}",
+            "seq": seq,
+            "ts": utc_now(),
+            "type": event_type,
+            **fields,
+        }
+        with path.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(event, ensure_ascii=False, sort_keys=True) + "\n")
+        return event
 
 
 def read_events(base: Path) -> list[dict[str, Any]]:
@@ -299,11 +306,25 @@ def write_artifact_hash(base: Path, rel_path: str) -> str:
     path = base / rel_path
     digest = sha256_file(path)
     hash_path = base / "hashes" / "artifacts.sha256.json"
-    data = read_json(hash_path) if hash_path.exists() else {"schema": "kdh.providers-discuss.artifact-hashes.v1", "artifacts": {}}
-    data["artifacts"][rel_path] = digest
-    write_json(hash_path, data)
+    with _file_lock(base / ".locks" / "hashes.lock"):
+        data = read_json(hash_path) if hash_path.exists() else {"schema": "kdh.providers-discuss.artifact-hashes.v1", "artifacts": {}}
+        data["artifacts"][rel_path] = digest
+        write_json(hash_path, data)
     append_event(base, "artifact.hashed", refs=[rel_path], sha256=digest)
     return digest
+
+
+@contextmanager
+def _file_lock(path: Path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as fh:
+        if fcntl is not None:
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            if fcntl is not None:
+                fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
 
 
 def copy_answer(src: Path, dest: Path) -> None:

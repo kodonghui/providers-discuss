@@ -191,9 +191,39 @@ with (project / "fake-team.jsonl").open("w", encoding="utf-8") as fh:
 (home / ".claude" / "teams" / team_name / "state.json").write_text(json.dumps({"team_name": team_name}) + "\n", encoding="utf-8")
 for name, payload in events:
     print(f"{name} team_name={payload.get('team_name')}")
-print(marker)
+if os.environ.get("KDH_FAKE_CLAUDE_ARTIFACT_ONLY") == "1":
+    import time
+    time.sleep(10)
+else:
+    print(marker)
 PY
 chmod +x "${fake_claude}"
+
+fake_codex="${tmp}/fake-codex"
+cat > "${fake_codex}" <<'PY'
+#!/usr/bin/env python3
+import json
+import sys
+from pathlib import Path
+
+prompt = sys.stdin.read()
+output = None
+for index, item in enumerate(sys.argv):
+    if item in {"-o", "--output-last-message"} and index + 1 < len(sys.argv):
+        output = Path(sys.argv[index + 1])
+if output is None:
+    raise SystemExit("missing -o/--output-last-message")
+output.parent.mkdir(parents=True, exist_ok=True)
+output.write_text(
+    "# Fake Codex answer\n\n"
+    + f"argv={json.dumps(sys.argv)}\n"
+    + f"prompt_bytes={len(prompt.encode('utf-8'))}\n"
+    + "KDH_CODEX_DONE\n",
+    encoding="utf-8",
+)
+print("fake codex completed")
+PY
+chmod +x "${fake_codex}"
 
 cat > "${tmp}/gemini-live.config.json" <<'EOF'
 {
@@ -242,12 +272,100 @@ cat > "${tmp}/mixed-live.config.json" <<'EOF'
       }
     },
     {
+      "seat_id": "claude_team_required",
+      "provider": "anthropic",
+      "transport": "claude_k_team_agents",
+      "model": "sonnet",
+      "reasoning_effort": "medium",
+      "role": "required Claude Team Agents reviewer",
+      "required": true,
+      "timeout_seconds": 5,
+      "execution": {
+        "model": "sonnet",
+        "effort": "medium",
+        "permission_mode": "auto"
+      },
+      "team_agents": {
+        "enabled": true,
+        "required_direct_message_count": 6,
+        "roles": [
+          {"name": "readme-writer"},
+          {"name": "maturity-auditor"},
+          {"name": "boundary-reviewer"}
+        ]
+      }
+    },
+    {
       "seat_id": "gemini_required",
       "provider": "google",
       "transport": "gemini_cli",
       "model": "gemini-test",
       "reasoning_effort": "default",
       "role": "required Gemini headless reviewer",
+      "required": true,
+      "timeout_seconds": 5
+    }
+  ]
+}
+EOF
+cat > "${tmp}/full-live.config.json" <<'EOF'
+{
+  "schema": "providers-discuss.public-config.v1",
+  "objective": "Run a three-round, three-seat fake live dispatch proof.",
+  "rounds": [
+    {"round_id": "R1", "mode": "explore", "title": "Explore README framing"},
+    {"round_id": "R2", "mode": "challenge", "title": "Challenge maturity and billing claims"},
+    {"round_id": "R3", "mode": "decide", "title": "Decide README contract"}
+  ],
+  "seats": [
+    {
+      "seat_id": "codex_required",
+      "provider": "openai",
+      "transport": "codex_exec_file",
+      "model": "gpt-5.5",
+      "reasoning_effort": "medium",
+      "role": "required Codex reviewer",
+      "required": true,
+      "timeout_seconds": 5,
+      "execution": {
+        "answer_path_required": true,
+        "completion_marker": "KDH_CODEX_DONE",
+        "read_only_sandbox_forbidden": true,
+        "sandbox": "workspace-write",
+        "stdout_capture_fallback": true
+      }
+    },
+    {
+      "seat_id": "claude_team_required",
+      "provider": "anthropic",
+      "transport": "claude_k_team_agents",
+      "model": "sonnet",
+      "reasoning_effort": "medium",
+      "role": "required Claude Team Agents reviewer",
+      "required": true,
+      "timeout_seconds": 5,
+      "execution": {
+        "model": "sonnet",
+        "effort": "medium",
+        "permission_mode": "auto"
+      },
+      "team_agents": {
+        "enabled": true,
+        "required_direct_message_count": 6,
+        "roles": [
+          {"name": "readme-writer"},
+          {"name": "maturity-auditor"},
+          {"name": "boundary-reviewer"}
+        ]
+      }
+    },
+    {
+      "seat_id": "gemini_required",
+      "provider": "google",
+      "transport": "gemini_cli",
+      "model": "gemini-test",
+      "reasoning_effort": "default",
+      "role": "required Gemini reviewer",
       "required": true,
       "timeout_seconds": 5
     }
@@ -455,15 +573,19 @@ mixed_run="$("${cmd}" init \
   --run-id smoke-mixed)"
 "${cmd}" preflight "${mixed_run}" --root "${work}/runs" >/dev/null
 set +e
-"${cmd}" run-round "${mixed_run}" \
+HOME="${tmp}/fake-claude-home-mixed" "${cmd}" run-round "${mixed_run}" \
   --root "${work}/runs" \
   --round R1 \
   --mode live-dispatch \
+  --cli-path "codex=${fake_codex}" \
+  --cli-path "claude=${fake_claude}" \
   --cli-path "gemini_cli=${fake_gemini}" > "${work}/mixed-live.out" 2> "${work}/mixed-live.err"
 mixed_rc=$?
 set -e
-test "${mixed_rc}" -eq 2
-grep -q "live dispatch partial" "${work}/mixed-live.err"
+test "${mixed_rc}" -eq 0
+grep -q "live dispatch completed" "${work}/mixed-live.out"
+grep -q "KDH_CODEX_DONE" "${work}/runs/${mixed_run}/answers/round-R1/codex_required.md"
+grep -q "KDH_CLAUDE_DONE" "${work}/runs/${mixed_run}/answers/round-R1/claude_team_required.md"
 grep -q "KDH_GEMINI_DONE" "${work}/runs/${mixed_run}/answers/round-R1/gemini_required.md"
 python3 - "${work}/runs/${mixed_run}/run.json" <<'PY'
 import json
@@ -471,9 +593,41 @@ import sys
 from pathlib import Path
 
 run = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-assert run["state"] == "round_prompt_ready"
+assert run["state"] == "round_outputs_collected"
 assert run["current_round"] == "R1"
 PY
+
+full_run="$("${cmd}" init \
+  --config "${tmp}/full-live.config.json" \
+  --root "${work}/runs" \
+  --run-id smoke-full-live)"
+"${cmd}" preflight "${full_run}" --root "${work}/runs" >/dev/null
+HOME="${tmp}/fake-claude-home-full" "${cmd}" advance "${full_run}" \
+  --root "${work}/runs" \
+  --round-mode live-dispatch \
+  --cli-path "codex=${fake_codex}" \
+  --cli-path "claude=${fake_claude}" \
+  --cli-path "gemini_cli=${fake_gemini}" \
+  --max-steps 30 \
+  --json > "${work}/full-live-advance.json"
+python3 - "${work}/runs/${full_run}" "${work}/full-live-advance.json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+run = Path(sys.argv[1])
+payload = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+assert payload["status"] == "pass"
+assert payload["state"] == "finished"
+run_rounds = [item for item in payload["actions"] if item["action"] == "run-round"]
+assert [item["round_id"] for item in run_rounds] == ["R1", "R2", "R3"]
+assert (run / "result.json").exists()
+for round_id in ("R1", "R2", "R3"):
+    assert (run / "claims" / f"round-{round_id}-claim-map.json").exists()
+    for seat in ("codex_required", "claude_team_required", "gemini_required"):
+        assert (run / "answers" / f"round-{round_id}" / f"{seat}.md").exists()
+PY
+"${cmd}" verify "${full_run}" --root "${work}/runs" >/dev/null
 
 claude_shape_run="$("${cmd}" init \
   --config "${tmp}/claude-shape.config.json" \
@@ -527,6 +681,32 @@ if HOME="${tmp}/fake-claude-home-override" "${cmd}" smoke-claude-team-agents "${
   exit 1
 fi
 grep -q "override requires --override-reason" "${work}/claude-override.err"
+
+claude_artifact_run="$("${cmd}" init \
+  --config "${tmp}/claude-shape.config.json" \
+  --root "${work}/runs" \
+  --run-id smoke-claude-artifact-completion)"
+"${cmd}" preflight "${claude_artifact_run}" --root "${work}/runs" >/dev/null
+HOME="${tmp}/fake-claude-home-artifact" KDH_FAKE_CLAUDE_ARTIFACT_ONLY=1 "${cmd}" smoke-claude-team-agents "${claude_artifact_run}" \
+  --root "${work}/runs" \
+  --round R1 \
+  --seat claude_team_shape \
+  --claude-bin "${fake_claude}" \
+  --timeout-seconds 10 \
+  --override-reason "package smoke artifact completion cleanup" \
+  --experimental-agent-teams \
+  --json > "${work}/claude-artifact-completion.json"
+python3 - "${work}/runs/${claude_artifact_run}" "${work}/claude-artifact-completion.json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+run = Path(sys.argv[1])
+payload = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+assert payload["status"] == "pass"
+proof = json.loads((run / payload["proof_path"]).read_text(encoding="utf-8"))
+assert proof["cleanup_after_completion"] is True
+PY
 
 profile_run="$("${cmd}" init \
   --config "${pkg}/examples/profile-balanced-kdh.config.json" \

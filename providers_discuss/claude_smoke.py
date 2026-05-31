@@ -331,6 +331,17 @@ def _spawn_pty(
                 cleanup_after_completion = True
                 _terminate_process(proc)
                 break
+            if not completion_seen and _artifact_completion_seen(answer_path=answer_path):
+                completion_seen = True
+                if proc.poll() is None and not exit_sent:
+                    try:
+                        os.write(master_fd, b"\n/exit\n")
+                        exit_sent = True
+                        cleanup_deadline = time.monotonic() + 5
+                    except OSError:
+                        cleanup_after_completion = True
+                        _terminate_process(proc)
+                        break
 
             readable, _, _ = select.select([master_fd], [], [], 0.2)
             if master_fd in readable:
@@ -390,6 +401,13 @@ def _spawn_pty(
         _terminate_process(proc)
         exit_code = proc.poll()
     return "".join(chunks), exit_code, timed_out, killed_before_completion, cleanup_after_completion, blocked_reason, trust_accepted
+
+
+def _artifact_completion_seen(*, answer_path: Path) -> bool:
+    try:
+        return COMPLETION_MARKER in answer_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
 
 
 def _is_relative_to(path: Path, parent: Path) -> bool:

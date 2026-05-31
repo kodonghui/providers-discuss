@@ -40,6 +40,7 @@ def run_claude_team_agents_smoke(
     timeout_seconds: int | None,
     trigger_mode: str,
     timeout_override_reason: str = "",
+    provider_result_artifacts: bool = False,
 ) -> dict[str, Any]:
     runtime = build_claude_runtime(seat, timeout_seconds=timeout_seconds, timeout_override_reason=timeout_override_reason)
     effective_timeout = int(runtime["timeout_seconds"]["effective"])
@@ -61,11 +62,13 @@ def run_claude_team_agents_smoke(
     required_direct_messages = int(team_cfg.get("required_direct_message_count", DEFAULT_TEAM_AGENTS_DIRECT_MESSAGE_COUNT))
     team_name = f"providers-{round_id.lower()}-{run['run_id']}"
 
-    prompt_rel = f"prompts/round-{round_id}/{seat_id}.live-team-agents-smoke.md"
-    answer_rel = f"answers/round-{round_id}/{seat_id}.team-agents-smoke.md"
+    prompt_suffix = "live-team-agents" if provider_result_artifacts else "live-team-agents-smoke"
+    artifact_suffix = "" if provider_result_artifacts else ".team-agents-smoke"
+    prompt_rel = f"prompts/round-{round_id}/{seat_id}.{prompt_suffix}.md"
+    answer_rel = f"answers/round-{round_id}/{seat_id}{artifact_suffix}.md"
     transcript_rel = f"logs/round-{round_id}/{seat_id}.transcript.ansi"
-    status_rel = f"logs/round-{round_id}/{seat_id}.team-agents-smoke.status.json"
-    proof_rel = f"logs/round-{round_id}/{seat_id}.team-agents-smoke.proof.json"
+    status_rel = f"logs/round-{round_id}/{seat_id}{artifact_suffix}.status.json"
+    proof_rel = f"logs/round-{round_id}/{seat_id}{artifact_suffix}.proof.json"
     session_jsonl_dir_rel = f"logs/round-{round_id}/session-jsonl"
     team_state_dir_rel = f"logs/round-{round_id}/team-state"
 
@@ -169,7 +172,6 @@ def run_claude_team_agents_smoke(
         write_json(status_path, status)
     augment_status_with_runtime(status_path, runtime)
     status = _load_status(status_path) or status
-    write_artifact_hash(base, status_rel)
 
     session_tool_counts = _session_tool_counts(base, session_jsonl_rels, team_name)
     proof = _build_proof(
@@ -195,10 +197,20 @@ def run_claude_team_agents_smoke(
         trigger_mode=trigger_mode,
         runtime=runtime,
     )
+    result = validate_team_agents_proof(proof, base)
+    _write_provider_status_fields(
+        status_path=status_path,
+        status=status,
+        provider_status="completed" if result["status"] == "pass" else "failed",
+        answer_rel=answer_rel if answer_path.exists() else "",
+        proof_rel=proof_rel,
+        mode="live-dispatch" if provider_result_artifacts else "smoke-claude-team-agents",
+        failure_classification="" if result["status"] == "pass" else _team_agents_failure(result["blockers"]),
+    )
+    write_artifact_hash(base, status_rel)
     write_json(proof_path, proof)
     write_artifact_hash(base, proof_rel)
 
-    result = validate_team_agents_proof(proof, base)
     run["state"] = "team_agents_smoke_completed" if result["status"] == "pass" else "team_agents_smoke_failed"
     run["current_round"] = round_id
     run["last_team_agents_smoke"] = {
@@ -237,6 +249,8 @@ def run_claude_team_agents_smoke(
     _append_summary(base, round_id, seat_id, team_name, proof_rel, result["status"], trigger_mode)
     return {
         "status": result["status"],
+        "answer_path": answer_rel if answer_path.exists() else "",
+        "status_path": status_rel,
         "proof_path": proof_rel,
         "team_name": team_name,
         "trigger_mode": trigger_mode,
@@ -267,6 +281,7 @@ def _team_agents_prompt(
     marker_instruction = "the exact string formed by concatenating `KDH_CLAUDE` and `_DONE`"
     teammate_count = len(teammates)
     teammate_list = _format_teammate_list(teammates)
+    run_context = _run_context_section(run=run, round_id=round_id, run_root=run_root)
     return f"""# KDH Claude-K Team Agents Live Smoke Contract
 
 This is a bounded Team Agents PoC inside a live Claude Code PTY session.
@@ -282,6 +297,8 @@ Run details:
 - teammates: {", ".join(teammates)}
 - required_direct_messages: {required_direct_messages}
 - trigger_mode: `{trigger_mode}`
+
+{run_context}
 
 Required live actions:
 1. Use `TeamCreate` to create the named team above.
@@ -329,6 +346,46 @@ Do not use `claude -p`. Do not modify source files or provider-home config.
 """
 
 
+def _run_context_section(*, run: dict[str, Any], round_id: str, run_root: Path) -> str:
+    context_refs = []
+    for rel in (
+        "inputs/input-pack.md",
+        "config/source-index.json",
+        "config/providers-discuss.config.json",
+    ):
+        if (run_root / rel).exists():
+            context_refs.append(rel)
+    delta_rel = f"prompts/round-{round_id}.prompt-delta.md"
+    if (run_root / delta_rel).exists():
+        context_refs.append(delta_rel)
+    for path in sorted((run_root / "answers").glob("round-R*/*.md")):
+        rel = path.relative_to(run_root).as_posix()
+        if rel not in context_refs:
+            context_refs.append(rel)
+    for folder in ("gates", "orchestrator"):
+        folder_path = run_root / folder
+        if not folder_path.exists():
+            continue
+        for path in sorted(folder_path.glob("*.md")):
+            rel = path.relative_to(run_root).as_posix()
+            if rel not in context_refs:
+                context_refs.append(rel)
+    if not context_refs:
+        return "Input/context files: none attached yet."
+    lines = [
+        "Input/context files:",
+        f"- run_root: `{run_root}`",
+    ]
+    lines.extend(f"- `{rel}`" for rel in context_refs)
+    lines.extend(
+        [
+            "",
+            "Before writing the answer, have teammates read the relevant input pack/source index and prior-round artifacts listed above.",
+        ]
+    )
+    return "\n".join(lines)
+
+
 def _format_teammate_list(teammates: list[str]) -> str:
     if not teammates:
         return ""
@@ -337,6 +394,33 @@ def _format_teammate_list(teammates: list[str]) -> str:
     if len(teammates) == 2:
         return f"{teammates[0]} and {teammates[1]}"
     return f"{', '.join(teammates[:-1])}, and {teammates[-1]}"
+
+
+def _write_provider_status_fields(
+    *,
+    status_path: Path,
+    status: dict[str, Any],
+    provider_status: str,
+    answer_rel: str,
+    proof_rel: str,
+    mode: str,
+    failure_classification: str,
+) -> None:
+    payload = dict(status)
+    payload["status"] = provider_status
+    payload["answer_path"] = answer_rel
+    payload["proof_path"] = proof_rel
+    payload["mode"] = mode
+    payload["failure_classification"] = failure_classification
+    write_json(status_path, payload)
+
+
+def _team_agents_failure(blockers: list[dict[str, Any]]) -> str:
+    for blocker in blockers:
+        reason = str(blocker.get("reason") or "")
+        if reason:
+            return f"{FAILURE_PROOF_FAILED}:{reason}"
+    return FAILURE_PROOF_FAILED
 
 
 def _snapshot_claude_jsonl() -> dict[Path, int]:

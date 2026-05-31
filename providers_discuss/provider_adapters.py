@@ -97,9 +97,10 @@ class ProviderAdapter:
             return [f"manual import: provide --answer {seat['seat_id']}=<answer.md>"]
         if self.transport == "codex_exec_file":
             return [
-                "runner path: providers-discuss run-round <run-id> --round <round> --mode manual-import "
-                f"--answer {seat['seat_id']}=<answer.md>",
-                "codex_exec_file live dispatch is structural; do not call codex directly from this prompt",
+                "runner path: providers-discuss run-round <run-id> --round <round> --mode live-dispatch "
+                f"--cli-path codex=<path>",
+                "codex --ask-for-approval never exec -C <run-root> -s workspace-write -o <answer> -",
+                f"model={model or 'configured'} effort={effort or 'configured'}",
             ]
         if self.transport == "claude_k":
             return [
@@ -142,9 +143,9 @@ ADAPTERS: dict[str, ProviderAdapter] = {
         adapter_id="codex_exec_file",
         transport="codex_exec_file",
         provider_ids=("openai",),
-        maturity="structural",
-        live_dispatch="not_implemented_in_p6",
-        live_dispatch_available=False,
+        maturity="live_headless",
+        live_dispatch="run-round_live-dispatch",
+        live_dispatch_available=True,
         cli_name="codex",
     ),
     "claude_k": ProviderAdapter(
@@ -160,9 +161,9 @@ ADAPTERS: dict[str, ProviderAdapter] = {
         adapter_id="claude_team_agents",
         transport="claude_k_team_agents",
         provider_ids=("anthropic",),
-        maturity="smoke_only",
-        live_dispatch="use_smoke_claude_team_agents",
-        live_dispatch_available=False,
+        maturity="live_team_agents",
+        live_dispatch="run-round_live-dispatch_or_smoke-claude-team-agents",
+        live_dispatch_available=True,
         cli_name="claude",
     ),
     "gemini_cli": ProviderAdapter(
@@ -394,10 +395,12 @@ def render_provider_prompt(
     profile_contract = ""
     if isinstance(seat.get("agent_profile"), dict):
         profile_contract = "\n" + render_agent_profile_contract(seat["agent_profile"], assigned_to=f"seat:{seat['seat_id']}")
+    round_id = spec["round_id"]
+    run_context = _run_context_section(run=run, round_id=round_id)
     return f"""# kdh-providers-discuss Provider Prompt
 
 run_id: `{run['run_id']}`
-round_id: `{spec['round_id']}`
+round_id: `{round_id}`
 round_mode: `{spec['mode']}`
 seat_id: `{seat['seat_id']}`
 provider: `{seat.get('provider', '')}`
@@ -419,6 +422,7 @@ live_dispatch_available: `{summary['live_dispatch_available']}`
 
 {spec['title']}
 {profile_contract}
+{run_context}
 
 ## Command Preview
 
@@ -441,12 +445,58 @@ the provider answer.
 ## Required Output
 
 Return a concrete Markdown answer with claims that can later be mapped into
-`claims/round-{spec['round_id']}-claim-map.json`.
+`claims/round-{round_id}-claim-map.json`.
 
 Do not invent evidence. Do not claim implementation is authorized unless the
 gate says so. Do not add output length caps unless the CEO explicitly asked for
 one in the current run.
 """
+
+
+def _run_context_section(*, run: dict[str, Any], round_id: str) -> str:
+    base_text = str(run.get("root") or "").strip()
+    if not base_text:
+        return ""
+    base = Path(base_text)
+    if not base.exists():
+        return ""
+    context_refs = []
+    primary_refs = [
+        "inputs/input-pack.md",
+        "config/source-index.json",
+        "config/providers-discuss.config.json",
+    ]
+    for rel in primary_refs:
+        if (base / rel).exists():
+            context_refs.append(rel)
+    delta_rel = f"prompts/round-{round_id}.prompt-delta.md"
+    if (base / delta_rel).exists():
+        context_refs.append(delta_rel)
+    for path in sorted((base / "answers").glob("round-R*/*.md")):
+        rel = path.relative_to(base).as_posix()
+        if rel not in context_refs:
+            context_refs.append(rel)
+    for folder in ("gates", "orchestrator"):
+        folder_path = base / folder
+        if not folder_path.exists():
+            continue
+        for path in sorted(folder_path.glob("*.md")):
+            rel = path.relative_to(base).as_posix()
+            if rel not in context_refs:
+                context_refs.append(rel)
+    if not context_refs:
+        return ""
+    lines = [
+        "",
+        "## Run Context Files",
+        "",
+        f"Run root: `{base}`",
+        "",
+        "Read the relevant files below before answering. The input pack and source index are the authoritative provider input; prior answers, gates, and orchestrator reviews are prior-round context.",
+        "",
+    ]
+    lines.extend(f"- `{rel}`" for rel in context_refs)
+    return "\n".join(lines) + "\n"
 
 
 def write_manual_import_result(
