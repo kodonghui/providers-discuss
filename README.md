@@ -354,8 +354,9 @@ bin/providers-discuss verify-proof "$RUN_ID" --root "$ROOT" --kind team-agents -
 
 ## Release Status
 
-This repository is public early-stage work. `RELEASE-CHECKLIST.md` tracks the
-remaining gates for a stable release when present.
+This repository is public early-stage work. Before publishing a stable release,
+run the verification commands in `AGENTS.md` and resolve the license blocker
+below.
 
 ## License
 
