@@ -4,6 +4,7 @@ import argparse
 import contextlib
 import io
 import json
+import re
 import shutil
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -1498,6 +1499,20 @@ def cmd_gate(args: argparse.Namespace) -> int:
     claim_result = validate_claim_map(claim_map_path)
     unsupported = claim_result["unsupported_load_bearing_claims"]
     blockers = [*provider_blockers, *claim_result["blockers"]]
+    if claim_result.get("semantic_claim_count", 0) == 0:
+        blockers.append(
+            {
+                "check": "semantic_claims_missing",
+                "reason": "claim-map contains no semantic claims; provider-output receipts are not enough for a discussion gate",
+            }
+        )
+    if claim_result.get("load_bearing_claim_count", 0) == 0:
+        blockers.append(
+            {
+                "check": "load_bearing_claims_missing",
+                "reason": "claim-map contains no load-bearing claims to evaluate or carry forward",
+            }
+        )
     if blockers:
         verdict = "return_to_round"
     elif unsupported > 0:
@@ -1519,6 +1534,8 @@ def cmd_gate(args: argparse.Namespace) -> int:
         "round_id": args.round,
         "verdict": verdict,
         "unsupported_load_bearing_claims": unsupported,
+        "semantic_claims": claim_result.get("semantic_claim_count", 0),
+        "load_bearing_claims": claim_result.get("load_bearing_claim_count", 0),
         "blockers": blockers,
         "basis": claim_result["basis"] + [item.get("seat_id", "") for item in provider_blockers if item.get("seat_id")],
         "next_action": _next_action_for_gate(run, args.round, verdict),
@@ -1625,12 +1642,14 @@ def cmd_verify_proof(args: argparse.Namespace) -> int:
         "run_id": args.run_id,
         "status": result["status"],
         "proof_kind": args.kind,
-        "proof_path": str(proof_path),
+        "proof_path": proof_ref,
         "checks": result["checks"],
         "blockers": result["blockers"],
     }
-    write_json(base / "verify.json", payload)
-    append_event(base, "proof.verified", run_id=args.run_id, proof_kind=args.kind, status=result["status"], refs=[str(proof_path)])
+    proof_verify_ref = _proof_verify_ref(base, proof_path)
+    write_json(base / proof_verify_ref, payload)
+    write_artifact_hash(base, proof_verify_ref)
+    append_event(base, "proof.verified", run_id=args.run_id, proof_kind=args.kind, status=result["status"], refs=[proof_ref, proof_verify_ref])
     if args.kind == "team-agents" and result["status"] == "pass":
         _reconcile_team_agents_smoke(base, args.run_id, proof, proof_path, proof_ref)
     if args.json:
@@ -1645,6 +1664,14 @@ def _proof_ref(base: Path, proof_path: Path) -> str:
         return str(proof_path.relative_to(base))
     except ValueError:
         return str(proof_path)
+
+
+def _proof_verify_ref(base: Path, proof_path: Path) -> str:
+    try:
+        rel = proof_path.relative_to(base)
+    except ValueError:
+        rel = Path("proof-verifications") / (proof_path.name + ".verify.json")
+    return rel.with_name(rel.stem + ".verify.json").as_posix()
 
 
 def _reconcile_team_agents_smoke(base: Path, run_id: str, proof: dict[str, Any], proof_path: Path, proof_ref: str) -> None:
@@ -2249,6 +2276,7 @@ def _write_auto_claim_map(*, base: Path, run: dict[str, Any], round_id: str) -> 
     if claim_map_path.exists():
         return
     claims: list[dict[str, Any]] = []
+    answer_texts: dict[str, str] = {}
     for index, seat in enumerate(provider_seats(base), start=1):
         seat_id = str(seat.get("seat_id") or f"seat-{index}")
         status_rel = f"logs/round-{round_id}/{seat_id}.status.json"
@@ -2260,6 +2288,10 @@ def _write_auto_claim_map(*, base: Path, run: dict[str, Any], round_id: str) -> 
         status = read_json(status_path)
         if status.get("status") != "completed":
             continue
+        try:
+            answer_texts[answer_rel] = answer_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            answer_texts[answer_rel] = ""
         claims.append(
             {
                 "claim_id": f"CLM-{round_id}-{len(claims) + 1:03d}",
@@ -2270,17 +2302,200 @@ def _write_auto_claim_map(*, base: Path, run: dict[str, Any], round_id: str) -> 
                 "support": [answer_rel, status_rel],
             }
         )
+    claims.extend(_semantic_claims_from_answers(base=base, run=run, round_id=round_id, answer_texts=answer_texts, start_index=len(claims) + 1))
     payload = {
         "schema": CLAIM_MAP_SCHEMA,
         "run_id": run["run_id"],
         "round_id": round_id,
         "claims": claims,
         "generated_by": "providers-discuss advance",
-        "generation_mode": "provider_output_receipts",
+        "generation_mode": "semantic_draft_from_provider_answers" if any(claim.get("claim_type") != "provider_output" for claim in claims) else "provider_output_receipts",
     }
     write_json(claim_map_path, payload)
     write_artifact_hash(base, claim_map_rel)
     append_event(base, "claim_map.auto_written", run_id=run["run_id"], round_id=round_id, refs=[claim_map_rel], claim_count=len(claims))
+
+
+def _semantic_claims_from_answers(
+    *,
+    base: Path,
+    run: dict[str, Any],
+    round_id: str,
+    answer_texts: dict[str, str],
+    start_index: int,
+) -> list[dict[str, Any]]:
+    corpus = "\n".join([str(run.get("objective", "")), *answer_texts.values()])
+    corpus_lower = corpus.lower()
+    claims: list[dict[str, Any]] = []
+    index = start_index
+
+    def add(
+        claim_type: str,
+        claim: str,
+        *,
+        status: str = "supported",
+        load_bearing: bool = True,
+        keywords: tuple[str, ...] = (),
+        support_extra: list[str] | None = None,
+        counterevidence: list[str] | None = None,
+        owner_next_action: str = "",
+    ) -> None:
+        nonlocal index
+        support = _supporting_answer_refs(answer_texts, keywords)
+        if support_extra:
+            support.extend(item for item in support_extra if item not in support)
+        claims.append(
+            {
+                "claim_id": f"CLM-{round_id}-{index:03d}",
+                "claim": claim,
+                "claim_type": claim_type,
+                "status": status,
+                "load_bearing": load_bearing,
+                "support": support,
+                "counterevidence": counterevidence or [],
+                "owner_next_action": owner_next_action,
+            }
+        )
+        index += 1
+
+    input_support: list[str] = []
+    for rel in ("inputs/input-pack.md", "config/source-index.json", "config/providers-discuss.config.json"):
+        if (base / rel).exists():
+            input_support.append(rel)
+
+    if _has_all(corpus_lower, ("file-backed",)) or _has_all(corpus_lower, ("local-first",)):
+        add(
+            "product_identity",
+            "The package should be framed as a local-first, file-backed provider discussion runner.",
+            keywords=("local-first", "file-backed", "runner"),
+            support_extra=input_support,
+            owner_next_action="Preserve this identity claim in the next prompt and final README.",
+        )
+    if _has_any(corpus_lower, ("2026-06-15", "june 15, 2026", "6월 15일", "15 de junio de 2026")) and _has_any(corpus_lower, ("claude -p", "agent sdk")):
+        add(
+            "policy_claim",
+            "The README policy motivation should be the 2026-06-15 Claude Agent SDK / claude -p credit split.",
+            keywords=("claude -p", "agent sdk", "2026-06-15"),
+            support_extra=input_support,
+            owner_next_action="Keep the policy date and source explicit; do not rewrite this as a billing workaround.",
+        )
+    if _has_any(corpus_lower, ("billing bypass", "결제 우회", "policy workaround", "free claude automation")):
+        add(
+            "non_goal_or_safety_boundary",
+            "The package must not be described as a billing bypass, policy workaround, or free Claude automation path.",
+            keywords=("billing bypass", "policy workaround", "free claude automation"),
+            support_extra=input_support,
+            owner_next_action="Challenge any provider wording that weakens this safety boundary.",
+        )
+    if _has_any(corpus_lower, ("claude_k", "claude team agents", "claude_k_team_agents")):
+        add(
+            "adapter_maturity",
+            "The README must keep plain claude_k separate from claude_k_team_agents and preserve conservative maturity claims.",
+            keywords=("claude_k", "claude_k_team_agents", "team agents"),
+            support_extra=input_support,
+            owner_next_action="Carry this into every later round and every localized section.",
+        )
+    if _has_any(corpus_lower, ("manual import", "manual fallback")):
+        add(
+            "adapter_maturity",
+            "Manual import should be described as a fallback/import path, not as a provider choice.",
+            keywords=("manual import", "fallback"),
+            support_extra=input_support,
+            owner_next_action="Reject provider drafts that list manual import as a provider seat.",
+        )
+    if _has_any(corpus_lower, ("runner-owned", "proof", "status", "hash", "claim map", "orchestrator")):
+        add(
+            "artifact_contract",
+            "Provider answers must stay separate from runner-owned proof, status, event, hash, gate, claim, and orchestrator artifacts.",
+            keywords=("runner-owned", "proof", "status", "claim map"),
+            support_extra=input_support,
+            owner_next_action="Require final output to preserve the artifact ownership boundary.",
+        )
+    if _has_any(corpus_lower, ("oauth", "cookie", "browser-state", "provider-home", "credential")):
+        add(
+            "credential_safety",
+            "The README should state that the runner does not collect OAuth tokens, cookies, browser state, provider-home raw config, or credential file bodies.",
+            keywords=("oauth", "cookie", "provider-home", "credential"),
+            support_extra=input_support,
+            owner_next_action="Keep this safety claim in all final README languages.",
+        )
+    language_hits = _language_hits(corpus_lower)
+    if len(language_hits) >= 5:
+        add(
+            "localization_requirement",
+            "The final README must preserve load-bearing claims across English, Korean, Chinese, Japanese, and Spanish.",
+            keywords=(),
+            support_extra=sorted(set(_all_answer_refs(answer_texts))),
+            owner_next_action="Use this as a multilingual acceptance checklist, not as optional summary text.",
+        )
+
+    if _round_mode(run, round_id) == "challenge" or _has_any(corpus_lower, ("challenge", "risk", "unsupported", "overclaim", "safer wording")):
+        challenge_support = _supporting_answer_refs(answer_texts, ("challenge", "risk", "unsupported", "overclaim", "safer"))
+        if challenge_support:
+            add(
+                "round_challenge",
+                "This round raised challenge material that the next round must resolve instead of replacing with another independent draft.",
+                status="contested",
+                load_bearing=False,
+                keywords=("challenge", "risk", "unsupported", "overclaim", "safer"),
+                support_extra=challenge_support,
+                owner_next_action="Promote the challenged items into the next prompt delta and final acceptance checklist.",
+            )
+    if _round_mode(run, round_id) == "decide":
+        add(
+            "decision_contract",
+            "The final round should produce a decision plus an acceptance checklist, with unresolved items routed back explicitly.",
+            keywords=("acceptance", "checklist", "decision", "route-back"),
+            support_extra=sorted(set(_all_answer_refs(answer_texts))),
+            owner_next_action="Record final answer refs and any final implementation artifacts in result.json.",
+        )
+    return claims
+
+
+def _round_mode(run: dict[str, Any], round_id: str) -> str:
+    for item in run.get("rounds", []):
+        if item.get("round_id") == round_id:
+            return str(item.get("mode") or "")
+    return ""
+
+
+def _has_any(text: str, needles: tuple[str, ...]) -> bool:
+    return any(needle.lower() in text for needle in needles)
+
+
+def _has_all(text: str, needles: tuple[str, ...]) -> bool:
+    return all(needle.lower() in text for needle in needles)
+
+
+def _all_answer_refs(answer_texts: dict[str, str]) -> list[str]:
+    return [rel for rel, text in answer_texts.items() if text.strip()]
+
+
+def _supporting_answer_refs(answer_texts: dict[str, str], keywords: tuple[str, ...]) -> list[str]:
+    if not keywords:
+        return _all_answer_refs(answer_texts)
+    refs: list[str] = []
+    lowered = tuple(keyword.lower() for keyword in keywords)
+    for rel, text in answer_texts.items():
+        text_lower = text.lower()
+        if any(keyword in text_lower for keyword in lowered):
+            refs.append(rel)
+    return refs
+
+
+def _language_hits(text: str) -> set[str]:
+    hits: set[str] = set()
+    markers = {
+        "english": ("english", "## english"),
+        "korean": ("korean", "한국어"),
+        "chinese": ("chinese", "中文"),
+        "japanese": ("japanese", "日本語"),
+        "spanish": ("spanish", "español", "espanol"),
+    }
+    for language, candidates in markers.items():
+        if any(candidate in text for candidate in candidates):
+            hits.add(language)
+    return hits
 
 
 def _write_auto_result(*, base: Path, run: dict[str, Any], final_round: str) -> None:
@@ -2309,12 +2524,92 @@ def _write_auto_result(*, base: Path, run: dict[str, Any], final_round: str) -> 
         "objective": run.get("objective", ""),
         "final_round": final_round,
         "answer_refs": answer_refs,
+        "final_artifacts": _detect_final_artifacts(base, run),
+        "acceptance_checklist": _final_acceptance_checklist(base, final_round),
         "summary": "Auto-generated completion result from final-round provider answer artifacts.",
         "generated_by": "providers-discuss advance",
     }
     write_json(result_path, payload)
     write_artifact_hash(base, "result.json")
     append_event(base, "result.auto_written", run_id=run["run_id"], round_id=final_round, refs=["result.json"], answer_count=len(answer_refs))
+
+
+def _detect_final_artifacts(base: Path, run: dict[str, Any]) -> list[dict[str, Any]]:
+    objective = str(run.get("objective") or "").lower()
+    artifacts: list[dict[str, Any]] = []
+    if "readme" not in objective:
+        return artifacts
+    seen: set[Path] = set()
+    for root in (base, base.parent, base.parent.parent):
+        readme = (root / "README.md").resolve()
+        if readme in seen or not readme.exists():
+            continue
+        seen.add(readme)
+        try:
+            text = readme.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        artifacts.append(
+            {
+                "path": _display_path(readme, base),
+                "artifact_type": "readme",
+                "line_count": text.count("\n") + 1,
+                "language_sections": _readme_language_sections(text),
+                "policy_markers": {
+                    "claude_p": "claude -p" in text,
+                    "agent_sdk": "Agent SDK" in text,
+                    "date_2026_06_15": "2026-06-15" in text or "June 15, 2026" in text,
+                    "billing_bypass": "billing bypass" in text.lower(),
+                    "claude_k_team_agents": "claude_k_team_agents" in text,
+                },
+            }
+        )
+    return artifacts
+
+
+def _display_path(path: Path, base: Path) -> str:
+    for root in (base, base.parent, base.parent.parent):
+        try:
+            return path.relative_to(root).as_posix()
+        except ValueError:
+            continue
+    return str(path)
+
+
+def _readme_language_sections(text: str) -> list[str]:
+    section_map = {
+        "English": r"^##\s+English\b",
+        "Korean": r"^##\s+(한국어|Korean)\b",
+        "Chinese": r"^##\s+(中文|Chinese)\b",
+        "Japanese": r"^##\s+(日本語|Japanese)\b",
+        "Spanish": r"^##\s+(Español|Spanish|Espanol)\b",
+    }
+    found: list[str] = []
+    for name, pattern in section_map.items():
+        if re.search(pattern, text, flags=re.MULTILINE | re.IGNORECASE):
+            found.append(name)
+    return found
+
+
+def _final_acceptance_checklist(base: Path, final_round: str) -> list[dict[str, Any]]:
+    claim_map_path = base / "claims" / f"round-{final_round}-claim-map.json"
+    if not claim_map_path.exists():
+        return []
+    claim_map = read_json(claim_map_path)
+    checklist = []
+    for claim in claim_map.get("claims", []):
+        if claim.get("claim_type") == "provider_output":
+            continue
+        checklist.append(
+            {
+                "claim_id": claim.get("claim_id", ""),
+                "claim_type": claim.get("claim_type", ""),
+                "status": claim.get("status", ""),
+                "load_bearing": claim.get("load_bearing") is True,
+                "claim": claim.get("claim", ""),
+            }
+        )
+    return checklist
 
 
 def cmd_cancel(args: argparse.Namespace) -> int:
@@ -2485,6 +2780,8 @@ def validate_claim_map(path: Path) -> dict[str, Any]:
             "blockers": [{"check": "claim_map_exists", "reason": "claim-map missing"}],
             "basis": [],
             "unsupported_load_bearing_claims": 0,
+            "semantic_claim_count": 0,
+            "load_bearing_claim_count": 0,
         }
     data = read_json(path)
     if data.get("schema") != CLAIM_MAP_SCHEMA:
@@ -2493,10 +2790,16 @@ def validate_claim_map(path: Path) -> dict[str, Any]:
     else:
         _check(checks, "claim_map_schema", "pass", [str(path)])
     unsupported = 0
+    semantic_count = 0
+    load_bearing_count = 0
     for claim in data.get("claims", []):
         claim_id = claim.get("claim_id", "")
         if claim_id:
             basis.append(claim_id)
+        if claim.get("claim_type") != "provider_output":
+            semantic_count += 1
+        if claim.get("load_bearing") is True:
+            load_bearing_count += 1
         status = claim.get("status")
         if status not in ALLOWED_CLAIM_STATUSES:
             blockers.append({"check": "claim_status", "claim_id": claim_id, "reason": f"invalid status: {status}"})
@@ -2507,7 +2810,16 @@ def validate_claim_map(path: Path) -> dict[str, Any]:
             unsupported += 1
             blockers.append({"check": "claim_support", "claim_id": claim_id, "reason": "supported load-bearing claim lacks support"})
     _check(checks, "unsupported_load_bearing_claims_zero", "pass" if unsupported == 0 else "fail", [str(path)])
-    return {"checks": checks, "blockers": blockers, "basis": basis, "unsupported_load_bearing_claims": unsupported}
+    _check(checks, "semantic_claims_present", "pass" if semantic_count > 0 else "fail", [str(path)], f"semantic={semantic_count}")
+    _check(checks, "load_bearing_claims_present", "pass" if load_bearing_count > 0 else "fail", [str(path)], f"load_bearing={load_bearing_count}")
+    return {
+        "checks": checks,
+        "blockers": blockers,
+        "basis": basis,
+        "unsupported_load_bearing_claims": unsupported,
+        "semantic_claim_count": semantic_count,
+        "load_bearing_claim_count": load_bearing_count,
+    }
 
 
 def find_provider_seat(base: Path, seat_id: str) -> dict[str, Any]:
@@ -2730,10 +3042,22 @@ def _orchestrator_review(after: str, next_round: str, carried: list[dict[str, An
         "|---|---|---:|---|",
     ]
     for claim in carried:
-        reason = "unresolved or load-bearing"
+        reason = str(claim.get("owner_next_action") or "unresolved or load-bearing").replace("|", "\\|")
         lines.append(f"| `{claim.get('claim_id', '')}` | `{claim.get('status', '')}` | {claim.get('load_bearing') is True} | {reason} |")
     if not carried:
         lines.append("| none | none | false | no unresolved claims |")
+    lines.extend(["", "## Required Next-Round Focus", ""])
+    if carried:
+        for claim in carried:
+            lines.append(f"- `{claim.get('claim_id', '')}` {claim.get('claim', '')}")
+            support = claim.get("support") if isinstance(claim.get("support"), list) else []
+            if support:
+                lines.append(f"  support: {', '.join(str(item) for item in support[:4])}")
+            action = str(claim.get("owner_next_action") or "").strip()
+            if action:
+                lines.append(f"  next_action: {action}")
+    else:
+        lines.append("- none")
     lines.extend(
         [
             "",
@@ -2759,7 +3083,26 @@ def _prompt_delta(after: str, next_round: str, carried: list[dict[str, Any]]) ->
     if carried:
         for claim in carried:
             lines.append(f"- `{claim.get('claim_id', '')}` status `{claim.get('status', '')}`: {claim.get('claim', '')}")
+            support = claim.get("support") if isinstance(claim.get("support"), list) else []
+            if support:
+                lines.append(f"  - support: {', '.join(str(item) for item in support[:4])}")
+            action = str(claim.get("owner_next_action") or "").strip()
+            if action:
+                lines.append(f"  - required_follow_up: {action}")
     else:
         lines.append("- none")
-    lines.extend(["", "## Target", "", f"- next_round: `{next_round or 'terminal'}`"])
+    lines.extend(
+        [
+            "",
+            "## Next-Round Contract",
+            "",
+            "- Resolve or preserve every carried claim explicitly.",
+            "- Do not replace prior-round critique with another independent draft.",
+            "- Cite the prior answer path, source id, or artifact path for each accepted or rejected claim.",
+            "",
+            "## Target",
+            "",
+            f"- next_round: `{next_round or 'terminal'}`",
+        ]
+    )
     return "\n".join(lines) + "\n"

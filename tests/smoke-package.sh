@@ -522,7 +522,7 @@ run = Path(sys.argv[1])
                     "claim": "Manual smoke preserved the answer artifact.",
                     "claim_type": "decision",
                     "status": "supported",
-                    "load_bearing": False,
+                    "load_bearing": True,
                     "support": ["answers/round-R1/human_reviewer.md"],
                 }
             ],

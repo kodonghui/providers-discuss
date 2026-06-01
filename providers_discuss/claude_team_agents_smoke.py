@@ -324,6 +324,9 @@ Write the answer file at `{answer_abs}`. Include:
 - the run_id, round_id, seat_id, and team_name above;
 - a `test_outputs` section with one bullet from each teammate;
 - the direct message tokens used;
+- when the objective asks for a substantive provider result, a substantive
+  answer section after `test_outputs` that follows the round task, includes
+  source support, and ends with `## Claims For Gate`;
 - the completion marker, {marker_instruction}, on its own final line.
 
 Write status JSON at `{status_abs}` with this shape:
@@ -420,6 +423,15 @@ def _write_provider_status_fields(
     payload["proof_path"] = proof_rel
     payload["mode"] = mode
     payload["failure_classification"] = failure_classification
+    runtime = payload.get("runtime") if isinstance(payload.get("runtime"), dict) else {}
+    if isinstance(runtime.get("model"), dict):
+        payload["model"] = runtime["model"].get("effective", "")
+    if isinstance(runtime.get("effort"), dict):
+        payload["reasoning_effort"] = runtime["effort"].get("effective", "")
+    if isinstance(runtime.get("permission_mode"), dict):
+        payload["permission_mode"] = runtime["permission_mode"].get("effective", "")
+    if isinstance(runtime.get("timeout_seconds"), dict):
+        payload["timeout_seconds"] = runtime["timeout_seconds"].get("effective", payload.get("timeout_seconds"))
     write_json(status_path, payload)
 
 

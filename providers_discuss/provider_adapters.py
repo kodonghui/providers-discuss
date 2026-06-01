@@ -397,6 +397,7 @@ def render_provider_prompt(
         profile_contract = "\n" + render_agent_profile_contract(seat["agent_profile"], assigned_to=f"seat:{seat['seat_id']}")
     round_id = spec["round_id"]
     run_context = _run_context_section(run=run, round_id=round_id)
+    round_contract = _round_output_contract(spec)
     return f"""# kdh-providers-discuss Provider Prompt
 
 run_id: `{run['run_id']}`
@@ -421,6 +422,8 @@ live_dispatch_available: `{summary['live_dispatch_available']}`
 ## Round Task
 
 {spec['title']}
+
+{round_contract}
 {profile_contract}
 {run_context}
 
@@ -447,9 +450,46 @@ the provider answer.
 Return a concrete Markdown answer with claims that can later be mapped into
 `claims/round-{round_id}-claim-map.json`.
 
+Include a clearly delimited `## Claims For Gate` section. Each claim should
+name the claim, its support path/source id, whether it is load-bearing, and any
+counterevidence or route-back.
+
 Do not invent evidence. Do not claim implementation is authorized unless the
 gate says so. Do not add output length caps unless the CEO explicitly asked for
 one in the current run.
+"""
+
+
+def _round_output_contract(spec: dict[str, Any]) -> str:
+    mode = str(spec.get("mode") or "").lower()
+    if mode == "explore":
+        return """## Round Output Contract
+
+- Produce an independent proposal grounded in the input pack and source index.
+- Extract 8-12 semantic claims that a gate can evaluate.
+- Mark at least five load-bearing claims.
+- List likely overclaims, missing evidence, and localization or implementation risks.
+"""
+    if mode == "challenge":
+        return """## Round Output Contract
+
+- Do not simply write another independent draft.
+- Read prior-round answers, gates, and prompt deltas first.
+- Produce a challenge table with prior provider/source, claim, risk, safer wording, and whether the issue must carry to the next round.
+- Distinguish unsupported claims, contested claims, deferred claims, and accepted claims.
+"""
+    if mode in {"decide", "verify"}:
+        return """## Round Output Contract
+
+- Synthesize the prior challenges into a final decision or verification result.
+- Include an acceptance checklist.
+- State final artifact paths when the task asks for an implementation artifact.
+- Route unresolved items back explicitly instead of hiding assumptions.
+"""
+    return """## Round Output Contract
+
+- Answer the round task concretely.
+- Preserve source support, contested claims, and route-backs clearly enough for the gate to inspect.
 """
 
 
