@@ -38,8 +38,8 @@ grep -q "model-refresh --provider gemini" "${pkg}/skills/kdh-providers-discuss/S
 grep -q "run-shape gate" "${pkg}/skills/kdh-providers-discuss/SKILL.md"
 grep -q "deliverable profile" "${pkg}/skills/kdh-providers-discuss/SKILL.md"
 grep -q "Do not call provider CLIs directly" "${pkg}/skills/providers-discuss/SKILL.md"
-grep -q "hardcode a specific Gemini version" "${pkg}/docs/intake-workflow.md"
-grep -q "KDH_FINAL_ARTIFACT" "${pkg}/docs/intake-workflow.md"
+grep -q "hardcode a specific Gemini version" "${pkg}/skills/providers-discuss/SKILL.md"
+grep -q "KDH_FINAL_ARTIFACT" "${pkg}/README.md"
 
 "${pkg}/install.sh" --prefix "${install_home}/.local" --codex-home "${install_home}/.codex" --uninstall >/dev/null
 test ! -e "${install_home}/.local/bin/providers-discuss"
