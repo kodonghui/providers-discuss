@@ -6,677 +6,1177 @@
 
 # providers-discuss
 
-`providers-discuss` is a local, file-backed runner for comparing AI provider
-seats across multi-round discussions. It was built for the post-2026-06-15
-world where Claude Agent SDK and `claude -p` usage move to a separate monthly
-credit path: instead of making one provider CLI the hidden source of truth, the
-runner writes prompts, answers, logs, proofs, hashes, gates, source indexes,
-and orchestrator deltas to disk.
+> **Local-first, file-backed runner for multi-provider AI discussions.**
+> Compare GPT/Codex, Claude Team Agents, and Gemini side-by-side across structured multi-round debates — with every prompt, answer, proof, and hash written to disk.
 
-**It is not a billing bypass. It is an audit trail for multi-provider reasoning.**
+**This is not a billing bypass. It is an audit trail for multi-provider reasoning.**
 
-## Why Now
+---
 
-On **June 15, 2026**, Anthropic moves Claude Agent SDK and `claude -p` usage
-to a separate monthly credit allocation. Scripts that silently called
-`claude -p` as an answer-capture path need to be replaced with a runner that
-owns the artifact contract. `providers-discuss` is that runner.
+## Background
 
-## What It Is
+On **June 15, 2026**, Anthropic moves Claude Agent SDK and `claude -p` usage to a separate monthly credit allocation. Scripts that silently called `claude -p` as an answer-capture path need to be replaced. `providers-discuss` is that replacement — a runner that owns the full artifact contract instead of hiding behind a single provider CLI.
 
-- A local CLI for configuring multi-round, multi-seat provider discussions.
-- A runner that writes observable artifacts under a run-state directory.
-- A live dispatch surface for GPT/Codex, Claude Team Agents, and Gemini
-  transports (where the adapter supports live dispatch).
-- A manual import fallback for already-captured answer files.
-- A read-only agent profile catalog (15 prompt-only roles).
-- A gate and verification workflow for claim maps, provider proofs, hashes,
-  and final results.
+---
 
-## What It Is Not
+## What It Does
 
-- Not a hidden provider automation daemon, cron job, memory system, or RAG
-  server.
-- Does not collect OAuth tokens, cookies, browser state, or provider-home
-  raw config.
-- Does not treat direct `claude -p`, direct `codex`, or direct `gemini`
-  output as an official provider answer.
-- Does not treat dry-run previews, fake proof fixtures, or summary-only Team
-  Agents output as live provider success.
-- Not a billing bypass.
-- Not a generic multi-agent framework or MCP server.
-- Not a browser-level provider gateway.
+- Runs **structured multi-round discussions** across multiple AI provider seats
+- Writes every observable artifact to disk: prompts, answers, logs, proofs, hashes, gate results, orchestrator deltas
+- Supports **live dispatch** for GPT/Codex, Claude Team Agents, and Gemini (per adapter maturity)
+- Provides a **manual import fallback** for pre-captured answer files
+- Ships with **15 prompt-only agent profiles** (no tool grants, no credential access)
+- Runs a **gate and verification workflow** over claim maps, provider proofs, and final results
+
+---
+
+## What It Does Not Do
+
+- No hidden automation daemons, cron jobs, memory systems, or RAG servers
+- No collection of OAuth tokens, cookies, browser state, or provider config
+- No treating raw `claude -p` / `codex` / `gemini` output as official provider answers
+- No treating dry-run previews or summary-only Team Agents output as live success
+- Not a billing bypass
+- Not a generic multi-agent framework or MCP server
+
+---
 
 ## Install
 
 ```bash
+# Preview what the installer will do
 ./install.sh --dry-run
+
+# Install
 ./install.sh
+
+# Verify
 providers-discuss --help
 ```
 
-Installs to `$HOME/.local/bin/providers-discuss` and
-`$HOME/.codex/skills/kdh-providers-discuss`. Does not touch provider homes,
-OAuth files, Claude hooks, browser settings, cron, or daemons.
+Installs to `$HOME/.local/bin/providers-discuss` and `$HOME/.codex/skills/kdh-providers-discuss`.
+Does **not** touch provider homes, OAuth files, Claude hooks, browser settings, cron, or daemons.
 
 ```bash
-# Optional public alias
+# Optional: add a public alias
 ./install.sh --with-public-alias
+
 # Uninstall
 ./install.sh --uninstall
+
 # Run without installing
 bin/providers-discuss --help
 ```
 
+---
+
 ## Quick Start: 3-Round, 3-Seat Live Dispatch
 
 ```bash
+# 1. Set up environment variables
 RUN_ID=my-3seat-run
 ROOT="$PWD/.runs"
 CONFIG=providers-discuss.config.json
 
+# 2. Validate your config
 bin/providers-discuss validate-config "$CONFIG"
+
+# 3. Check provider auth before spending credits
 bin/providers-discuss auth-preflight "$CONFIG" --report-dir "$PWD/auth-report"
+
+# 4. Initialize the run state directory
 bin/providers-discuss init --config "$CONFIG" --root "$ROOT" --run-id "$RUN_ID"
+
+# 5. Build the input pack (prompt construction)
 bin/providers-discuss build-input-pack --config "$CONFIG" --root "$ROOT" --run-id "$RUN_ID"
+
+# 6. Advance through rounds (live dispatch)
 bin/providers-discuss advance "$RUN_ID" --root "$ROOT" --round-mode live-dispatch
+
+# 7. Check run status
 bin/providers-discuss status "$RUN_ID" --root "$ROOT"
+
+# 8. Verify artifacts and proofs
 bin/providers-discuss verify "$RUN_ID" --root "$ROOT"
 ```
 
-## Provider Adapter Table
+---
 
-| User choice | Transport | Maturity | Notes |
+## Provider Adapter Reference
+
+| Provider | Transport | Status | Notes |
 |---|---|---|---|
-| `gpt/codex` | `codex_exec_file` | live headless | runner-owned answer file + `KDH_CODEX_DONE` marker |
-| `claude` | `claude_k` | **smoke-only** | interactive Claude Code smoke path; not normal multiround live dispatch |
-| `claude team agents` | `claude_k_team_agents` | live team agents | requires TeamCreate / SendMessage proof |
-| `gemini` | `gemini_cli` | live headless | child-process workspace trust; JSON/stdout capture |
-| fallback | `manual` | fallback | import already-created answers; not a provider choice |
+| `gpt/codex` | `codex_exec_file` | ✅ Live headless | Runner-owned answer file + `KDH_CODEX_DONE` marker |
+| `claude` | `claude_k` | ⚠️ Smoke-only | Interactive Claude Code smoke path — not normal multi-round live dispatch |
+| `claude team agents` | `claude_k_team_agents` | ✅ Live | Requires `TeamCreate` / `SendMessage` proof artifacts |
+| `gemini` | `gemini_cli` | ✅ Live headless | Child-process workspace trust; JSON/stdout capture |
+| *(fallback)* | `manual` | 🔁 Fallback | Import pre-created answer files — not a provider selection |
 
-> `claude` (`claude_k`) is smoke-only. Do not treat it as a general live
-> dispatch adapter. `claude team agents` (`claude_k_team_agents`) has live
-> dispatch but requires durable proof artifacts.
+> **Note:** `claude` (`claude_k`) is smoke-only. Do not use it as a general live dispatch adapter. Use `claude team agents` for live Claude dispatch, which requires durable proof artifacts.
+
+---
+
+## Run Artifacts
+
+The runner owns and writes the following artifact tree for each run:
+
+```
+.runs/<run-id>/
+├── run.json                          # Run metadata and config snapshot
+├── events.jsonl                      # Ordered event log
+├── inputs/
+│   └── input-pack.md                 # Constructed prompt input pack
+├── prompts/
+│   └── round-R<n>/
+│       └── <seat>.prompt.md          # Per-seat prompts
+├── answers/
+│   └── round-R<n>/
+│       └── <seat>.md                 # Provider answers
+├── logs/
+│   └── round-R<n>/
+│       ├── <seat>.status.json        # Dispatch status
+│       └── <seat>.proof.json         # Provider proof (Team Agents: TeamCreate, SendMessage, etc.)
+├── claims/
+│   └── round-R<n>-claim-map.json     # Extracted claims per seat
+├── gates/
+│   └── round-R<n>-gate.md            # Gate evaluation result
+├── orchestrator/
+│   └── round-R<n>-review.md          # Orchestrator synthesis
+├── result.json                       # Final result
+└── verify.json                       # Verification output
+```
+
+Provider seats write **answer content only**. They must not write to event bus, hash, gate, or proof files directly.
+
+---
 
 ## Agent Profiles
 
-Agent profiles are prompt-only role contracts. The bundled
-`examples/agents/kdh-profile-catalog.json` includes 15 profiles (Code
-Reviewer, Data Analyst, Ideation Catalyst, Implementation Engineer, Knowledge
-Curator, Orchestrator Planner, Product Strategist, QA Verifier, Release
-Manager, Research Synthesizer, Security Reviewer, System Architect, Technical
-Writer, UX Design Reviewer, Web Research Operator). Profiles do not grant
-tools, credentials, hooks, filesystem permissions, or provider-home access.
+15 bundled prompt-only role contracts. Profiles do **not** grant tools, credentials, hooks, filesystem permissions, or provider-home access.
 
-## Auth and Credential Safety
+| # | Profile |
+|---|---|
+| 1 | Code Reviewer |
+| 2 | Data Analyst |
+| 3 | Ideation Catalyst |
+| 4 | Implementation Engineer |
+| 5 | Knowledge Curator |
+| 6 | Orchestrator Planner |
+| 7 | Product Strategist |
+| 8 | QA Verifier |
+| 9 | Release Manager |
+| 10 | Research Synthesizer |
+| 11 | Security Reviewer |
+| 12 | System Architect |
+| 13 | Technical Writer |
+| 14 | UX Design Reviewer |
+| 15 | Web Research Operator |
 
-`auth-preflight` checks selected seats before live work. The report is
-sanitized — it records readiness classes (`installed_logged_in`,
-`installed_not_logged_in`, `missing_cli`, `manual_or_skipped`) and never
-copies OAuth tokens, cookies, provider-home config bodies, credential files,
-or shell history.
+Profiles are defined in `examples/agents/kdh-profile-catalog.json`.
 
-Gemini live dispatch sets `GEMINI_CLI_TRUST_WORKSPACE=true` only for the child
-process and records that in proof artifacts. The runner does not mutate Gemini
-provider-home config or copy credentials.
-
-## Team Agents Proof Requirements
-
-Claude Team Agents live dispatch requires durable proof:
-
-- `TeamCreate` must be called and recorded.
-- `TaskCreate` must produce real teammate tasks.
-- Teammate agents must be launched through the team-scoped `Agent` tool.
-- `SendMessage` calls must appear as real message events, not summaries.
-- Proof verification fails for summary-only delegation or ordinary subagent
-  delegation without Team Agents evidence.
-
-## Runner-Owned Artifacts
-
-The runner owns: prompt construction, answer path assignment, status JSON,
-proof JSON, event ordering, artifact hashes, claim/gate/orchestrator
-artifacts, and final result and verify outputs. Provider seats produce answer
-content only. They must not write event bus, hash, gate, or proof files
-directly.
-
-Run artifacts:
-`run.json`, `events.jsonl`, `inputs/input-pack.md`,
-`prompts/round-Rn/*.prompt.md`, `answers/round-Rn/*.md`,
-`logs/round-Rn/*.status.json`, `logs/round-Rn/*.proof.json`,
-`claims/round-Rn-claim-map.json`, `gates/round-Rn-gate.md`,
-`orchestrator/round-Rn-review.md`, `result.json`, `verify.json`
+---
 
 ## Deliverable Profiles
 
-Runs can choose a deliverable profile such as `discussion_summary`,
-`development_contract`, `readme_or_docs`, `research_synthesis`,
-`decision_memo`, or `implementation_plan`. Profile-backed terminal answers
-should emit the final Markdown inside one runner-owned block:
+Each run can target a deliverable profile. The terminal-round provider must emit its final answer inside a `KDH_FINAL_ARTIFACT` block:
 
 ```markdown
 <!-- KDH_FINAL_ARTIFACT path="final/development-contract.md" profile="development_contract" -->
 # Development Contract
 
-...
+...content...
+
 <!-- /KDH_FINAL_ARTIFACT -->
 ```
 
-The terminal gate extracts the block, checks required sections, hashes the
-artifact, and lets `finalize` refresh `result.json` from the current final
-files.
+The terminal gate extracts the block, checks required sections, hashes the artifact, and `finalize` refreshes `result.json`.
 
-## Limitations and Release Status
+**Available profiles:**
 
-This repository is public early-stage work. Not all adapters have reached
-production maturity. `claude_k` is smoke-only. Model names and effort labels
-should be refreshed at setup time (`model-refresh`) rather than treated as
-stable. Before publishing a stable release, run the verification commands in
-`AGENTS.md` and resolve the license blocker.
+| Profile | Description |
+|---|---|
+| `discussion_summary` | Structured synthesis of the multi-round debate |
+| `development_contract` | Engineering scope and interface contract |
+| `readme_or_docs` | Documentation artifact |
+| `research_synthesis` | Research findings and source attribution |
+| `decision_memo` | Decision record with rationale |
+| `implementation_plan` | Phased execution plan |
+
+---
+
+## Auth Preflight
+
+Run `auth-preflight` before every live dispatch to catch credential issues before spending tokens.
+
+```bash
+bin/providers-discuss auth-preflight providers-discuss.config.json --report-dir ./auth-report
+```
+
+The report records readiness classes only — it **never** copies OAuth tokens, cookies, provider config bodies, credential files, or shell history.
+
+| Class | Meaning |
+|---|---|
+| `installed_logged_in` | Ready for live dispatch |
+| `installed_not_logged_in` | CLI present but auth needed |
+| `missing_cli` | CLI not installed |
+| `manual_or_skipped` | Manual import fallback configured |
+
+---
+
+## Claude Team Agents: Proof Requirements
+
+Live dispatch via `claude_k_team_agents` requires all of the following to be recorded as durable proof artifacts:
+
+1. `TeamCreate` must be called and recorded
+2. `TaskCreate` must produce real teammate tasks
+3. Teammate agents must be launched via the team-scoped `Agent` tool
+4. `SendMessage` must appear as real message events — not summaries
+5. Summary-only delegation or ordinary subagent delegation without Team Agents evidence = **proof verification failure**
+
+---
+
+## Model Refresh
+
+Model names and effort labels drift over time. Refresh them at setup rather than treating them as stable:
+
+```bash
+bin/providers-discuss model-refresh --config providers-discuss.config.json
+```
+
+---
+
+## Limitations
+
+- This repository is **early-stage public work**. Not all adapters have reached production maturity.
+- `claude_k` is smoke-only — not suitable for production multi-round runs.
+- Verify all artifacts with the commands in `AGENTS.md` before publishing a stable release.
+- A license blocker exists: resolve it before distributing.
+
+---
 
 ## License
 
-No open-source license has been selected yet. Until a `LICENSE` file is added,
-the code is visible for inspection but not granted for reuse under an
-open-source license.
+No open-source license has been selected yet. Until a `LICENSE` file is added, the code is visible for inspection but **not** granted for reuse under any open-source license.
+
+---
 
 ---
 
 <a id="korean"></a>
 
-## 한국어 (Korean)
-
 # providers-discuss
 
-`providers-discuss`는 여러 AI 프로바이더 시트(GPT/Codex, Claude Team Agents,
-Gemini)를 다중 라운드 토론으로 비교하기 위한 **로컬 우선, 파일 기반 러너**입니다.
+> **로컬 우선, 파일 기반 멀티 프로바이더 AI 토론 러너**
+> GPT/Codex, Claude Team Agents, Gemini를 구조화된 다중 라운드 토론으로 비교하고, 모든 프롬프트·답변·증명·해시를 디스크에 기록합니다.
 
-**이 패키지는 과금 우회 수단이 아닙니다. 다중 프로바이더 추론을 위한 감사 추적 도구입니다.**
+**이 도구는 과금 우회 수단이 아닙니다. 다중 프로바이더 추론을 위한 감사 추적 도구입니다.**
 
-## 왜 지금인가
+---
 
-**2026년 6월 15일**, Anthropic은 Claude Agent SDK 및 `claude -p` 사용을 별도의
-월간 크레딧 경로로 전환합니다. `providers-discuss`는 공식 프로바이더 CLI에
-의존하는 대신, 프롬프트·답변·로그·증명·해시·게이트·소스 인덱스·오케스트레이터
-델타를 디스크에 기록하는 러너입니다.
+## 배경
 
-## 무엇인가
+**2026년 6월 15일**, Anthropic은 Claude Agent SDK 및 `claude -p` 사용을 별도의 월간 크레딧 경로로 전환합니다. `claude -p`를 암묵적으로 호출하던 스크립트를 대체할 도구가 필요합니다. `providers-discuss`는 단일 프로바이더 CLI에 의존하는 대신 전체 아티팩트 계약을 직접 소유하는 러너입니다.
 
-- 다중 라운드, 다중 시트 프로바이더 토론을 구성하는 로컬 CLI
-- 실행 상태 디렉터리 아래에 관찰 가능한 아티팩트를 기록하는 러너
-- GPT/Codex, Claude Team Agents, Gemini 트랜스포트용 라이브 디스패치 표면
-  (어댑터가 지원하는 경우)
-- 이미 캡처된 답변 파일을 위한 수동 임포트 폴백
-- 15개의 프롬프트 전용 역할 카탈로그
-- 클레임 맵, 프로바이더 증명, 해시, 최종 결과를 위한 게이트·검증 워크플로
+---
 
-## 무엇이 아닌가
+## 무엇을 하는가
 
-- 숨겨진 프로바이더 자동화 데몬, 크론 잡, 메모리 시스템, RAG 서버가 아님
-- OAuth 토큰, 쿠키, 브라우저 상태, 프로바이더 홈 설정을 수집하지 않음
-- 직접적인 `claude -p`, `codex`, `gemini` 출력을 공식 프로바이더 답변으로
-  처리하지 않음
-- 드라이런 미리보기, 가짜 증명 픽스처, 요약 전용 Team Agents 출력을 라이브
-  프로바이더 성공으로 처리하지 않음
-- 과금 우회 수단이 아님
-- 범용 멀티 에이전트 프레임워크 또는 MCP 서버가 아님
+- 여러 AI 프로바이더 시트에 걸쳐 **구조화된 다중 라운드 토론** 실행
+- 프롬프트·답변·로그·증명·해시·게이트 결과·오케스트레이터 델타 등 모든 관찰 가능한 아티팩트를 **디스크에 기록**
+- GPT/Codex, Claude Team Agents, Gemini에 대한 **라이브 디스패치** 지원 (어댑터 성숙도에 따라 다름)
+- 사전 캡처된 답변 파일을 위한 **수동 임포트 폴백** 제공
+- 도구 권한·자격 증명 없는 **15개 프롬프트 전용 에이전트 프로필** 제공
+- 클레임 맵·프로바이더 증명·최종 결과에 대한 **게이트 및 검증 워크플로** 실행
+
+---
+
+## 무엇을 하지 않는가
+
+- 숨겨진 자동화 데몬, 크론 잡, 메모리 시스템, RAG 서버 없음
+- OAuth 토큰, 쿠키, 브라우저 상태, 프로바이더 설정 수집 없음
+- `claude -p` / `codex` / `gemini` 원시 출력을 공식 답변으로 처리하지 않음
+- 드라이런 미리보기나 요약 전용 Team Agents 출력을 라이브 성공으로 처리하지 않음
+- 과금 우회 수단 아님
+- 범용 멀티 에이전트 프레임워크 또는 MCP 서버 아님
+
+---
 
 ## 설치
 
 ```bash
+# 설치 전 미리보기
 ./install.sh --dry-run
+
+# 설치
 ./install.sh
+
+# 확인
 providers-discuss --help
 ```
 
-## 빠른 시작
+`$HOME/.local/bin/providers-discuss` 및 `$HOME/.codex/skills/kdh-providers-discuss`에 설치됩니다.  
+프로바이더 홈, OAuth 파일, Claude 훅, 브라우저 설정, 크론, 데몬은 **건드리지 않습니다**.
 
 ```bash
-bin/providers-discuss validate-config providers-discuss.config.json
-bin/providers-discuss auth-preflight providers-discuss.config.json --report-dir ./auth-report
-bin/providers-discuss init --config providers-discuss.config.json --root ./.runs --run-id my-run
-bin/providers-discuss advance my-run --root ./.runs --round-mode live-dispatch
+# 퍼블릭 alias 추가 (선택)
+./install.sh --with-public-alias
+
+# 제거
+./install.sh --uninstall
+
+# 설치 없이 실행
+bin/providers-discuss --help
 ```
 
-## 어댑터 성숙도 표
+---
 
-| 선택 | 트랜스포트 | 성숙도 | 비고 |
+## 빠른 시작: 3라운드 3시트 라이브 디스패치
+
+```bash
+# 1. 환경 변수 설정
+RUN_ID=my-3seat-run
+ROOT="$PWD/.runs"
+CONFIG=providers-discuss.config.json
+
+# 2. 설정 파일 유효성 검사
+bin/providers-discuss validate-config "$CONFIG"
+
+# 3. 크레딧 소모 전 프로바이더 인증 확인
+bin/providers-discuss auth-preflight "$CONFIG" --report-dir "$PWD/auth-report"
+
+# 4. 실행 상태 디렉터리 초기화
+bin/providers-discuss init --config "$CONFIG" --root "$ROOT" --run-id "$RUN_ID"
+
+# 5. 입력 팩 구성 (프롬프트 생성)
+bin/providers-discuss build-input-pack --config "$CONFIG" --root "$ROOT" --run-id "$RUN_ID"
+
+# 6. 라운드 진행 (라이브 디스패치)
+bin/providers-discuss advance "$RUN_ID" --root "$ROOT" --round-mode live-dispatch
+
+# 7. 실행 상태 확인
+bin/providers-discuss status "$RUN_ID" --root "$ROOT"
+
+# 8. 아티팩트 및 증명 검증
+bin/providers-discuss verify "$RUN_ID" --root "$ROOT"
+```
+
+---
+
+## 프로바이더 어댑터 레퍼런스
+
+| 프로바이더 | 트랜스포트 | 상태 | 비고 |
 |---|---|---|---|
-| `gpt/codex` | `codex_exec_file` | 라이브 헤드리스 | 러너 소유 답변 파일 + `KDH_CODEX_DONE` 마커 |
-| `claude` | `claude_k` | **스모크 전용** | 인터랙티브 Claude Code 스모크 경로; 일반 다중 라운드 라이브 디스패치 아님 |
-| `claude team agents` | `claude_k_team_agents` | 라이브 팀 에이전트 | TeamCreate / SendMessage 증명 필요 |
-| `gemini` | `gemini_cli` | 라이브 헤드리스 | 자식 프로세스 워크스페이스 신뢰; JSON/stdout 캡처 |
-| 폴백 | `manual` | 폴백 | 이미 생성된 답변 임포트; 프로바이더 선택이 아님 |
+| `gpt/codex` | `codex_exec_file` | ✅ 라이브 헤드리스 | 러너 소유 답변 파일 + `KDH_CODEX_DONE` 마커 |
+| `claude` | `claude_k` | ⚠️ 스모크 전용 | 인터랙티브 Claude Code 스모크 경로 — 일반 다중 라운드 라이브 디스패치 불가 |
+| `claude team agents` | `claude_k_team_agents` | ✅ 라이브 | `TeamCreate` / `SendMessage` 증명 아티팩트 필요 |
+| `gemini` | `gemini_cli` | ✅ 라이브 헤드리스 | 자식 프로세스 워크스페이스 신뢰; JSON/stdout 캡처 |
+| *(폴백)* | `manual` | 🔁 폴백 | 사전 생성된 답변 파일 임포트 — 프로바이더 선택이 아님 |
 
-## 에이전트 프로필
+> **주의:** `claude` (`claude_k`)는 스모크 전용입니다. 일반 라이브 디스패치에 사용하지 마세요. Claude 라이브 디스패치가 필요하면 `claude team agents`를 사용하고 내구성 있는 증명 아티팩트가 필요합니다.
 
-에이전트 프로필은 프롬프트 전용 역할 계약입니다. 15개의 프로필(코드 리뷰어,
-데이터 분석가, 아이디에이션 카탈리스트, 구현 엔지니어, 지식 큐레이터,
-오케스트레이터 플래너, 제품 전략가, QA 검증자, 릴리스 매니저, 리서치 신시사이저,
-보안 리뷰어, 시스템 아키텍트, 기술 작가, UX 디자인 리뷰어, 웹 리서치 오퍼레이터).
-프로필은 도구, 자격 증명, 훅, 파일시스템 권한 또는 프로바이더 홈 액세스를 부여하지
-않습니다.
+---
 
-## 인증 및 자격 증명 안전성
+## 실행 아티팩트 구조
 
-`auth-preflight`는 라이브 작업 전에 선택한 시트를 확인합니다. 보고서는 정제되어
-준비 상태 클래스만 기록하며, OAuth 토큰, 쿠키, 프로바이더 홈 설정 본문, 자격 증명
-파일 또는 셸 히스토리는 절대 복사하지 않습니다.
+```
+.runs/<run-id>/
+├── run.json                          # 실행 메타데이터 및 설정 스냅샷
+├── events.jsonl                      # 이벤트 순서 로그
+├── inputs/
+│   └── input-pack.md                 # 구성된 프롬프트 입력 팩
+├── prompts/
+│   └── round-R<n>/
+│       └── <seat>.prompt.md          # 시트별 프롬프트
+├── answers/
+│   └── round-R<n>/
+│       └── <seat>.md                 # 프로바이더 답변
+├── logs/
+│   └── round-R<n>/
+│       ├── <seat>.status.json        # 디스패치 상태
+│       └── <seat>.proof.json         # 프로바이더 증명
+├── claims/
+│   └── round-R<n>-claim-map.json     # 시트별 추출된 클레임
+├── gates/
+│   └── round-R<n>-gate.md            # 게이트 평가 결과
+├── orchestrator/
+│   └── round-R<n>-review.md          # 오케스트레이터 종합
+├── result.json                       # 최종 결과
+└── verify.json                       # 검증 출력
+```
 
-Gemini 라이브 디스패치는 `GEMINI_CLI_TRUST_WORKSPACE=true`를 자식 프로세스에만
-설정하고 증명 아티팩트에 이를 기록합니다. 러너는 Gemini 프로바이더 홈 설정을
-변경하거나 자격 증명을 복사하지 않습니다.
+프로바이더 시트는 **답변 내용만** 작성합니다. 이벤트 버스, 해시, 게이트, 증명 파일에는 직접 쓰지 않습니다.
 
-## Team Agents 증명 요건
+---
 
-Claude Team Agents 라이브 디스패치는 내구성 있는 증명이 필요합니다:
+## 에이전트 프로필 (15종)
 
-- `TeamCreate`가 호출되고 기록되어야 합니다.
-- `TaskCreate`가 실제 팀원 작업을 생성해야 합니다.
-- 팀원 에이전트는 팀 범위 `Agent` 도구를 통해 실행되어야 합니다.
-- `SendMessage` 호출이 요약이 아닌 실제 메시지 이벤트로 나타나야 합니다.
-- 요약 전용 위임 또는 Team Agents 증거 없는 일반 하위 에이전트 위임은
-  증명 검증 실패로 처리됩니다.
+| # | 프로필 |
+|---|---|
+| 1 | Code Reviewer (코드 리뷰어) |
+| 2 | Data Analyst (데이터 분석가) |
+| 3 | Ideation Catalyst (아이디에이션 촉진자) |
+| 4 | Implementation Engineer (구현 엔지니어) |
+| 5 | Knowledge Curator (지식 큐레이터) |
+| 6 | Orchestrator Planner (오케스트레이터 플래너) |
+| 7 | Product Strategist (제품 전략가) |
+| 8 | QA Verifier (QA 검증자) |
+| 9 | Release Manager (릴리스 매니저) |
+| 10 | Research Synthesizer (리서치 신시사이저) |
+| 11 | Security Reviewer (보안 리뷰어) |
+| 12 | System Architect (시스템 아키텍트) |
+| 13 | Technical Writer (기술 작가) |
+| 14 | UX Design Reviewer (UX 디자인 리뷰어) |
+| 15 | Web Research Operator (웹 리서치 오퍼레이터) |
 
-## 러너 소유 아티팩트
+프로필은 도구·자격 증명·훅·파일시스템 권한·프로바이더 홈 접근을 부여하지 않습니다.  
+정의: `examples/agents/kdh-profile-catalog.json`
 
-러너가 소유하는 것: 프롬프트 구성, 답변 경로 할당, 상태 JSON, 증명 JSON, 이벤트
-순서, 아티팩트 해시, 클레임/게이트/오케스트레이터 아티팩트, 최종 결과 및 검증
-출력. 프로바이더 시트는 답변 내용만 생성합니다.
+---
 
 ## 산출물 프로필
 
-실행은 `discussion_summary`, `development_contract`, `readme_or_docs`,
-`research_synthesis`, `decision_memo`, `implementation_plan` 같은 산출물
-프로필을 선택할 수 있습니다. 프로필이 있는 마지막 답변은 최종 Markdown을
-`KDH_FINAL_ARTIFACT` 블록 안에 넣어야 하며, 러너는 그 블록을 추출하고 필수 섹션,
-해시, `result.json`을 검증합니다.
+마지막 라운드 프로바이더는 최종 답변을 `KDH_FINAL_ARTIFACT` 블록 안에 넣어야 합니다:
 
-## 한계 및 릴리스 상태
+```markdown
+<!-- KDH_FINAL_ARTIFACT path="final/development-contract.md" profile="development_contract" -->
+# Development Contract
 
-이 저장소는 공개 초기 단계 작업입니다. 모든 어댑터가 프로덕션 성숙도에 도달한
-것은 아닙니다. `claude_k`는 스모크 전용입니다. 모델 이름 및 노력 레이블은 안정된
-것으로 처리하지 말고 설정 시(`model-refresh`) 새로 고쳐야 합니다.
+...내용...
+
+<!-- /KDH_FINAL_ARTIFACT -->
+```
+
+터미널 게이트가 블록을 추출하고 필수 섹션·해시·`result.json`을 검증합니다.
+
+| 프로필 | 설명 |
+|---|---|
+| `discussion_summary` | 다중 라운드 토론 구조화 종합 |
+| `development_contract` | 엔지니어링 범위 및 인터페이스 계약 |
+| `readme_or_docs` | 문서 아티팩트 |
+| `research_synthesis` | 리서치 결과 및 출처 귀속 |
+| `decision_memo` | 의사결정 기록 및 근거 |
+| `implementation_plan` | 단계별 실행 계획 |
+
+---
+
+## 인증 프리플라이트
+
+라이브 디스패치 전에 반드시 실행하세요:
+
+```bash
+bin/providers-discuss auth-preflight providers-discuss.config.json --report-dir ./auth-report
+```
+
+보고서는 준비 상태 클래스만 기록하며, OAuth 토큰·쿠키·프로바이더 설정·자격 증명 파일·셸 히스토리는 **절대 복사하지 않습니다**.
+
+---
+
+## Claude Team Agents 증명 요건
+
+`claude_k_team_agents` 라이브 디스패치는 다음 모두가 내구성 있는 증명 아티팩트로 기록되어야 합니다:
+
+1. `TeamCreate` 호출 및 기록
+2. `TaskCreate`로 실제 팀원 작업 생성
+3. 팀원 에이전트를 팀 범위 `Agent` 도구로 실행
+4. `SendMessage`가 요약이 아닌 실제 메시지 이벤트로 표시
+5. 요약 전용 위임 또는 Team Agents 증거 없는 일반 하위 에이전트 위임 = **증명 검증 실패**
+
+---
+
+## 모델 리프레시
+
+모델 이름과 노력 레이블은 시간이 지남에 따라 변경됩니다. 설정 시 반드시 갱신하세요:
+
+```bash
+bin/providers-discuss model-refresh --config providers-discuss.config.json
+```
+
+---
+
+## 제한 사항
+
+- 이 저장소는 **공개 초기 단계 작업**입니다. 모든 어댑터가 프로덕션 성숙도에 도달한 것은 아닙니다.
+- `claude_k`는 스모크 전용으로, 프로덕션 다중 라운드 실행에 적합하지 않습니다.
+- 안정 릴리스 배포 전 `AGENTS.md`의 검증 명령어를 모두 실행하고 라이선스 이슈를 해결하세요.
+
+---
 
 ## 라이선스
 
-아직 오픈소스 라이선스가 선택되지 않았습니다. `LICENSE` 파일이 추가되기 전까지
-코드는 검토용으로 공개되어 있지만 오픈소스 재사용 권한은 부여되지 않습니다.
+아직 오픈소스 라이선스가 선택되지 않았습니다. `LICENSE` 파일이 추가되기 전까지 코드는 검토용으로만 공개되며, 오픈소스 재사용 권한은 **부여되지 않습니다**.
+
+---
 
 ---
 
 <a id="chinese"></a>
 
-## 中文 (Chinese)
-
 # providers-discuss
 
-`providers-discuss` 是一个**本地优先、基于文件**的运行器，用于跨多轮讨论比较
-多个 AI 提供商席位（GPT/Codex、Claude Team Agents、Gemini）。
+> **本地优先、基于文件的多提供商 AI 讨论运行器**
+> 跨结构化多轮辩论比较 GPT/Codex、Claude Team Agents 和 Gemini，将每一条提示、答案、证明和哈希写入磁盘。
 
 **这不是绕过计费的工具。它是多提供商推理的审计跟踪。**
 
-## 为什么是现在
+---
 
-**2026年6月15日**，Anthropic 将 Claude Agent SDK 和 `claude -p` 的使用迁移到单独
-的每月积分路径。`providers-discuss` 的目标是：不依赖单一提供商 CLI 作为隐藏的
-真相来源，而是将提示、答案、日志、证明、哈希、关卡、源索引和编排器增量写入
-磁盘。
+## 背景
 
-## 它是什么
+**2026年6月15日**，Anthropic 将 Claude Agent SDK 和 `claude -p` 的使用迁移到单独的每月积分路径。静默调用 `claude -p` 的脚本需要被替换。`providers-discuss` 就是这个替代方案——一个直接拥有完整制品契约的运行器，而非依赖单一提供商 CLI。
 
-- 用于配置多轮、多席位提供商讨论的本地 CLI
-- 在运行状态目录下写入可观测工件的运行器
-- 支持 GPT/Codex、Claude Team Agents 和 Gemini 的实时调度界面（适配器支持时）
-- 已捕获答案文件的手动导入回退
-- 包含 15 个纯提示角色的目录
-- 用于声明映射、提供商证明、哈希和最终结果的关卡与验证工作流
+---
 
-## 它不是什么
+## 功能概述
 
-- 不是隐藏的提供商自动化守护进程、定时任务、内存系统或 RAG 服务器
-- 不收集 OAuth 令牌、Cookie、浏览器状态或提供商主页原始配置
-- 不将直接的 `claude -p`、`codex` 或 `gemini` 输出视为官方提供商答案
-- 不将干运行预览、虚假证明固件或仅摘要的 Team Agents 输出视为实时提供商成功
+- 跨多个 AI 提供商席位运行**结构化多轮讨论**
+- 将所有可观测制品写入磁盘：提示、答案、日志、证明、哈希、关卡结果、编排器增量
+- 支持 GPT/Codex、Claude Team Agents 和 Gemini 的**实时调度**（按适配器成熟度）
+- 提供预捕获答案文件的**手动导入回退**
+- 内置 **15 个纯提示智能体配置文件**（无工具授权，无凭据访问）
+- 对声明映射、提供商证明和最终结果运行**关卡与验证工作流**
+
+---
+
+## 不包含的功能
+
+- 无隐藏自动化守护进程、定时任务、内存系统或 RAG 服务器
+- 不收集 OAuth 令牌、Cookie、浏览器状态或提供商配置
+- 不将原始 `claude -p` / `codex` / `gemini` 输出视为官方提供商答案
+- 不将干运行预览或仅摘要的 Team Agents 输出视为实时成功
 - 不是绕过计费的工具
 - 不是通用多智能体框架或 MCP 服务器
+
+---
 
 ## 安装
 
 ```bash
+# 预览安装内容
 ./install.sh --dry-run
+
+# 安装
 ./install.sh
+
+# 验证
 providers-discuss --help
 ```
 
-## 快速开始
+安装至 `$HOME/.local/bin/providers-discuss` 和 `$HOME/.codex/skills/kdh-providers-discuss`。  
+**不会**修改提供商主目录、OAuth 文件、Claude 钩子、浏览器设置、定时任务或守护进程。
 
 ```bash
-bin/providers-discuss validate-config providers-discuss.config.json
-bin/providers-discuss auth-preflight providers-discuss.config.json --report-dir ./auth-report
-bin/providers-discuss init --config providers-discuss.config.json --root ./.runs --run-id my-run
-bin/providers-discuss advance my-run --root ./.runs --round-mode live-dispatch
+# 可选：添加公共别名
+./install.sh --with-public-alias
+
+# 卸载
+./install.sh --uninstall
+
+# 不安装直接运行
+bin/providers-discuss --help
 ```
 
-## 适配器成熟度表
+---
 
-| 选择 | 传输 | 成熟度 | 说明 |
+## 快速开始：3轮3席位实时调度
+
+```bash
+# 1. 设置环境变量
+RUN_ID=my-3seat-run
+ROOT="$PWD/.runs"
+CONFIG=providers-discuss.config.json
+
+# 2. 验证配置文件
+bin/providers-discuss validate-config "$CONFIG"
+
+# 3. 在消耗积分前检查提供商认证
+bin/providers-discuss auth-preflight "$CONFIG" --report-dir "$PWD/auth-report"
+
+# 4. 初始化运行状态目录
+bin/providers-discuss init --config "$CONFIG" --root "$ROOT" --run-id "$RUN_ID"
+
+# 5. 构建输入包（提示生成）
+bin/providers-discuss build-input-pack --config "$CONFIG" --root "$ROOT" --run-id "$RUN_ID"
+
+# 6. 推进轮次（实时调度）
+bin/providers-discuss advance "$RUN_ID" --root "$ROOT" --round-mode live-dispatch
+
+# 7. 查看运行状态
+bin/providers-discuss status "$RUN_ID" --root "$ROOT"
+
+# 8. 验证制品与证明
+bin/providers-discuss verify "$RUN_ID" --root "$ROOT"
+```
+
+---
+
+## 提供商适配器参考
+
+| 提供商 | 传输 | 状态 | 说明 |
 |---|---|---|---|
-| `gpt/codex` | `codex_exec_file` | 实时无头 | 运行器拥有的答案文件 + `KDH_CODEX_DONE` 标记 |
-| `claude` | `claude_k` | **仅烟雾测试** | 交互式 Claude Code 烟雾路径；非正常多轮实时调度 |
-| `claude team agents` | `claude_k_team_agents` | 实时团队智能体 | 需要 TeamCreate / SendMessage 证明 |
-| `gemini` | `gemini_cli` | 实时无头 | 子进程工作区信任；JSON/stdout 捕获 |
-| 回退 | `manual` | 回退 | 导入已创建的答案；不是提供商选择 |
+| `gpt/codex` | `codex_exec_file` | ✅ 实时无头 | 运行器拥有的答案文件 + `KDH_CODEX_DONE` 标记 |
+| `claude` | `claude_k` | ⚠️ 仅烟雾测试 | 交互式 Claude Code 烟雾路径 — 不适用于正常多轮实时调度 |
+| `claude team agents` | `claude_k_team_agents` | ✅ 实时 | 需要 `TeamCreate` / `SendMessage` 证明制品 |
+| `gemini` | `gemini_cli` | ✅ 实时无头 | 子进程工作区信任；JSON/stdout 捕获 |
+| *(回退)* | `manual` | 🔁 回退 | 导入预创建的答案文件 — 非提供商选择 |
 
-## 智能体配置文件
+> **注意：** `claude`（`claude_k`）仅为烟雾测试。如需 Claude 实时调度，请使用 `claude team agents`，并需要持久证明制品。
 
-智能体配置文件是仅限提示的角色合约。捆绑的目录包含 15 个配置文件。配置文件不
-授予工具、凭据、钩子、文件系统权限或提供商主页访问权限。
+---
 
-## 身份验证与凭据安全
+## 运行制品结构
 
-`auth-preflight` 在实时工作前检查所选席位。报告经过净化处理——它记录就绪类别，
-绝不复制 OAuth 令牌、Cookie、提供商主页配置主体、凭据文件或 Shell 历史记录。
+```
+.runs/<run-id>/
+├── run.json                          # 运行元数据与配置快照
+├── events.jsonl                      # 有序事件日志
+├── inputs/input-pack.md              # 构建的提示输入包
+├── prompts/round-R<n>/<seat>.prompt.md   # 各席位提示
+├── answers/round-R<n>/<seat>.md          # 提供商答案
+├── logs/round-R<n>/
+│   ├── <seat>.status.json            # 调度状态
+│   └── <seat>.proof.json             # 提供商证明
+├── claims/round-R<n>-claim-map.json  # 各席位提取的声明
+├── gates/round-R<n>-gate.md          # 关卡评估结果
+├── orchestrator/round-R<n>-review.md # 编排器综合
+├── result.json                       # 最终结果
+└── verify.json                       # 验证输出
+```
 
-Gemini 实时调度仅为子进程设置 `GEMINI_CLI_TRUST_WORKSPACE=true`，并在证明工件
-中记录这一点。运行器不会更改 Gemini 提供商主页配置或复制凭据。
+提供商席位**仅写入答案内容**，不直接写入事件总线、哈希、关卡或证明文件。
 
-## Team Agents 证明要求
+---
 
-Claude Team Agents 实时调度需要持久证明：
+## 智能体配置文件（15种）
 
-- 必须调用并记录 `TeamCreate`。
-- `TaskCreate` 必须创建真实的队友任务。
-- 队友智能体必须通过团队范围的 `Agent` 工具启动。
-- `SendMessage` 调用必须作为真实消息事件出现，而非摘要。
-- 仅摘要委托或无 Team Agents 证据的普通子智能体委托将导致证明验证失败。
+| # | 配置文件 |
+|---|---|
+| 1 | Code Reviewer（代码审查员）|
+| 2 | Data Analyst（数据分析师）|
+| 3 | Ideation Catalyst（创意催化剂）|
+| 4 | Implementation Engineer（实现工程师）|
+| 5 | Knowledge Curator（知识管理员）|
+| 6 | Orchestrator Planner（编排规划师）|
+| 7 | Product Strategist（产品策略师）|
+| 8 | QA Verifier（QA 验证员）|
+| 9 | Release Manager（发布经理）|
+| 10 | Research Synthesizer（研究综合员）|
+| 11 | Security Reviewer（安全审查员）|
+| 12 | System Architect（系统架构师）|
+| 13 | Technical Writer（技术文档工程师）|
+| 14 | UX Design Reviewer（UX 设计审查员）|
+| 15 | Web Research Operator（网络研究操作员）|
 
-## 运行器拥有的工件
+配置文件定义于 `examples/agents/kdh-profile-catalog.json`，**不授予**工具、凭据、钩子、文件系统权限或提供商主目录访问权限。
 
-运行器拥有：提示构建、答案路径分配、状态 JSON、证明 JSON、事件排序、工件哈希、
-声明/关卡/编排器工件以及最终结果和验证输出。提供商席位仅生成答案内容。
+---
 
 ## 交付物配置文件
 
-运行可以选择 `discussion_summary`、`development_contract`、
-`readme_or_docs`、`research_synthesis`、`decision_memo` 或
-`implementation_plan` 等交付物配置文件。带配置文件的最终答案应将最终
-Markdown 放入 `KDH_FINAL_ARTIFACT` 块中；运行器会提取该块、检查必需章节、
-记录哈希，并刷新 `result.json`。
+最终轮次的提供商必须将答案放入 `KDH_FINAL_ARTIFACT` 块：
 
-## 限制和发布状态
+```markdown
+<!-- KDH_FINAL_ARTIFACT path="final/development-contract.md" profile="development_contract" -->
+# Development Contract
 
-此存储库为公开早期阶段工作。并非所有适配器都已达到生产成熟度。`claude_k`
-仅为烟雾测试模式。模型名称和工作量标签应在设置时（`model-refresh`）刷新，
-而非视为稳定。
+...内容...
+
+<!-- /KDH_FINAL_ARTIFACT -->
+```
+
+| 配置文件 | 说明 |
+|---|---|
+| `discussion_summary` | 多轮辩论的结构化综合 |
+| `development_contract` | 工程范围与接口契约 |
+| `readme_or_docs` | 文档制品 |
+| `research_synthesis` | 研究结果与来源归属 |
+| `decision_memo` | 带有理由的决策记录 |
+| `implementation_plan` | 分阶段执行计划 |
+
+---
+
+## 认证预检
+
+每次实时调度前运行：
+
+```bash
+bin/providers-discuss auth-preflight providers-discuss.config.json --report-dir ./auth-report
+```
+
+报告**绝不**复制 OAuth 令牌、Cookie、提供商配置、凭据文件或 Shell 历史记录。
+
+---
+
+## Claude Team Agents 证明要求
+
+`claude_k_team_agents` 实时调度需要以下所有项记录为持久证明制品：
+
+1. 调用并记录 `TeamCreate`
+2. `TaskCreate` 生成真实的队友任务
+3. 队友智能体通过团队范围的 `Agent` 工具启动
+4. `SendMessage` 以真实消息事件（非摘要）呈现
+5. 仅摘要委托或无 Team Agents 证据的普通子智能体委托 = **证明验证失败**
+
+---
+
+## 限制说明
+
+- 本仓库为**公开早期阶段工作**，并非所有适配器均已达到生产成熟度。
+- `claude_k` 仅为烟雾测试，不适用于生产多轮运行。
+- 发布稳定版本前，请运行 `AGENTS.md` 中的验证命令并解决许可证问题。
+
+---
 
 ## 许可证
 
-目前尚未选择开源许可证。在添加 `LICENSE` 文件之前，代码可供查看，但不授予
-开源复用权限。
+尚未选择开源许可证。在添加 `LICENSE` 文件之前，代码可供查看，但**不授予**任何开源复用权限。
+
+---
 
 ---
 
 <a id="japanese"></a>
 
-## 日本語 (Japanese)
-
 # providers-discuss
 
-`providers-discuss` は、複数の AI プロバイダーシート（GPT/Codex、Claude Team
-Agents、Gemini）をマルチラウンドディスカッションで比較するための
-**ローカルファースト・ファイルバックドランナー**です。
+> **ローカルファースト・ファイルバックドのマルチプロバイダー AI ディスカッションランナー**
+> 構造化されたマルチラウンドディスカッションで GPT/Codex、Claude Team Agents、Gemini を比較し、すべてのプロンプト・回答・証明・ハッシュをディスクに書き込みます。
 
 **これは課金回避ツールではありません。マルチプロバイダー推論の監査証跡です。**
 
-## なぜ今なのか
+---
 
-**2026年6月15日**、Anthropic は Claude Agent SDK および `claude -p` の使用を
-別の月次クレジットパスに移行します。`providers-discuss` は、単一のプロバイダー
-CLI を隠れた情報源とするのではなく、プロンプト・回答・ログ・証明・ハッシュ・
-ゲート・ソースインデックス・オーケストレーターデルタをディスクに書き込む
-ランナーです。
+## 背景
 
-## 何であるか
+**2026年6月15日**、Anthropic は Claude Agent SDK および `claude -p` の使用を別の月次クレジットパスに移行します。`claude -p` を暗黙的に呼び出すスクリプトは置き換える必要があります。`providers-discuss` はその置き換えです——単一のプロバイダー CLI に依存するのではなく、完全なアーティファクト契約を直接所有するランナーです。
 
-- マルチラウンド・マルチシートのプロバイダーディスカッションを設定する
-  ローカル CLI
-- 実行状態ディレクトリ配下に観察可能なアーティファクトを書き込むランナー
-- GPT/Codex、Claude Team Agents、Gemini トランスポートのライブディスパッチ
-  サーフェス（アダプターが対応している場合）
-- 既にキャプチャされた回答ファイルのための手動インポートフォールバック
-- 15 のプロンプト専用ロールカタログ
-- クレームマップ、プロバイダー証明、ハッシュ、最終結果のためのゲートと
-  検証ワークフロー
+---
 
-## 何でないか
+## 機能概要
 
-- 隠れたプロバイダー自動化デーモン、Cronジョブ、メモリシステム、RAGサーバー
-  ではない
-- OAuth トークン、Cookie、ブラウザ状態、プロバイダーホームの生設定を
-  収集しない
-- 直接の `claude -p`、`codex`、`gemini` 出力を公式プロバイダー回答として扱わない
-- ドライランプレビュー、偽の証明フィクスチャ、要約のみの Team Agents 出力を
-  ライブプロバイダー成功として扱わない
+- 複数の AI プロバイダーシートにわたる**構造化されたマルチラウンドディスカッション**の実行
+- プロンプト・回答・ログ・証明・ハッシュ・ゲート結果・オーケストレーターデルタなど、すべての観察可能なアーティファクトを**ディスクに書き込み**
+- GPT/Codex、Claude Team Agents、Gemini の**ライブディスパッチ**対応（アダプター成熟度による）
+- 事前キャプチャされた回答ファイルの**手動インポートフォールバック**
+- ツール権限・認証情報なしの **15 種プロンプト専用エージェントプロファイル**
+- クレームマップ・プロバイダー証明・最終結果に対する**ゲートと検証ワークフロー**
+
+---
+
+## 含まれないもの
+
+- 隠れた自動化デーモン、Cronジョブ、メモリシステム、RAGサーバーなし
+- OAuth トークン、Cookie、ブラウザ状態、プロバイダー設定を収集しない
+- 生の `claude -p` / `codex` / `gemini` 出力を公式回答として扱わない
+- ドライランプレビューや要約のみの Team Agents 出力をライブ成功として扱わない
 - 課金回避ツールではない
 - 汎用マルチエージェントフレームワークや MCP サーバーではない
+
+---
 
 ## インストール
 
 ```bash
+# インストール内容のプレビュー
 ./install.sh --dry-run
+
+# インストール
 ./install.sh
+
+# 確認
 providers-discuss --help
 ```
 
-## クイックスタート
+`$HOME/.local/bin/providers-discuss` と `$HOME/.codex/skills/kdh-providers-discuss` にインストールされます。  
+プロバイダーホーム、OAuth ファイル、Claude フック、ブラウザ設定、Cron、デーモンは**変更しません**。
 
 ```bash
-bin/providers-discuss validate-config providers-discuss.config.json
-bin/providers-discuss auth-preflight providers-discuss.config.json --report-dir ./auth-report
-bin/providers-discuss init --config providers-discuss.config.json --root ./.runs --run-id my-run
-bin/providers-discuss advance my-run --root ./.runs --round-mode live-dispatch
+# オプション：パブリックエイリアスを追加
+./install.sh --with-public-alias
+
+# アンインストール
+./install.sh --uninstall
+
+# インストールせずに実行
+bin/providers-discuss --help
 ```
 
-## アダプター成熟度テーブル
+---
 
-| 選択 | トランスポート | 成熟度 | 備考 |
+## クイックスタート：3ラウンド・3シート・ライブディスパッチ
+
+```bash
+# 1. 環境変数の設定
+RUN_ID=my-3seat-run
+ROOT="$PWD/.runs"
+CONFIG=providers-discuss.config.json
+
+# 2. 設定ファイルの検証
+bin/providers-discuss validate-config "$CONFIG"
+
+# 3. クレジット消費前にプロバイダー認証を確認
+bin/providers-discuss auth-preflight "$CONFIG" --report-dir "$PWD/auth-report"
+
+# 4. 実行状態ディレクトリの初期化
+bin/providers-discuss init --config "$CONFIG" --root "$ROOT" --run-id "$RUN_ID"
+
+# 5. 入力パックの構築（プロンプト生成）
+bin/providers-discuss build-input-pack --config "$CONFIG" --root "$ROOT" --run-id "$RUN_ID"
+
+# 6. ラウンドの進行（ライブディスパッチ）
+bin/providers-discuss advance "$RUN_ID" --root "$ROOT" --round-mode live-dispatch
+
+# 7. 実行状態の確認
+bin/providers-discuss status "$RUN_ID" --root "$ROOT"
+
+# 8. アーティファクトと証明の検証
+bin/providers-discuss verify "$RUN_ID" --root "$ROOT"
+```
+
+---
+
+## プロバイダーアダプター一覧
+
+| プロバイダー | トランスポート | ステータス | 備考 |
 |---|---|---|---|
-| `gpt/codex` | `codex_exec_file` | ライブヘッドレス | ランナー所有の回答ファイル + `KDH_CODEX_DONE` マーカー |
-| `claude` | `claude_k` | **スモークのみ** | インタラクティブ Claude Code スモークパス；通常のマルチラウンドライブディスパッチではない |
-| `claude team agents` | `claude_k_team_agents` | ライブチームエージェント | TeamCreate / SendMessage 証明が必要 |
-| `gemini` | `gemini_cli` | ライブヘッドレス | 子プロセスワークスペース信頼；JSON/stdout キャプチャ |
-| フォールバック | `manual` | フォールバック | 作成済み回答のインポート；プロバイダー選択ではない |
+| `gpt/codex` | `codex_exec_file` | ✅ ライブヘッドレス | ランナー所有の回答ファイル + `KDH_CODEX_DONE` マーカー |
+| `claude` | `claude_k` | ⚠️ スモークのみ | インタラクティブ Claude Code スモークパス — 通常のマルチラウンドライブディスパッチ不可 |
+| `claude team agents` | `claude_k_team_agents` | ✅ ライブ | `TeamCreate` / `SendMessage` 証明アーティファクトが必要 |
+| `gemini` | `gemini_cli` | ✅ ライブヘッドレス | 子プロセスワークスペース信頼；JSON/stdout キャプチャ |
+| *(フォールバック)* | `manual` | 🔁 フォールバック | 事前作成済み回答ファイルのインポート — プロバイダー選択ではない |
 
-## エージェントプロファイル
+> **注意：** `claude`（`claude_k`）はスモーク専用です。Claude のライブディスパッチが必要な場合は `claude team agents` を使用し、永続的な証明アーティファクトが必要です。
 
-エージェントプロファイルはプロンプト専用のロール契約です。バンドルされたカタログには
-15 のプロファイルが含まれています。プロファイルはツール、認証情報、フック、ファイル
-システム権限、またはプロバイダーホームアクセスを付与しません。
+---
 
-## 認証とクレデンシャルの安全性
+## 実行アーティファクト構造
 
-`auth-preflight` はライブ作業前に選択したシートを確認します。レポートはサニタイズ
-されており、OAuth トークン、Cookie、プロバイダーホーム設定本体、認証情報ファイル、
-またはシェル履歴は決してコピーされません。
+```
+.runs/<run-id>/
+├── run.json                          # 実行メタデータと設定スナップショット
+├── events.jsonl                      # 順序付きイベントログ
+├── inputs/input-pack.md              # 構築された入力プロンプトパック
+├── prompts/round-R<n>/<seat>.prompt.md   # シート別プロンプト
+├── answers/round-R<n>/<seat>.md          # プロバイダー回答
+├── logs/round-R<n>/
+│   ├── <seat>.status.json            # ディスパッチステータス
+│   └── <seat>.proof.json             # プロバイダー証明
+├── claims/round-R<n>-claim-map.json  # シート別抽出クレーム
+├── gates/round-R<n>-gate.md          # ゲート評価結果
+├── orchestrator/round-R<n>-review.md # オーケストレーター総合
+├── result.json                       # 最終結果
+└── verify.json                       # 検証出力
+```
 
-Gemini ライブディスパッチは `GEMINI_CLI_TRUST_WORKSPACE=true` を子プロセスにのみ
-設定し、証明アーティファクトにそれを記録します。ランナーは Gemini プロバイダー
-ホーム設定を変更したり、認証情報をコピーしたりしません。
+プロバイダーシートは**回答内容のみ**を書き込みます。イベントバス、ハッシュ、ゲート、証明ファイルへの直接書き込みはしません。
 
-## Team Agents 証明要件
+---
 
-Claude Team Agents ライブディスパッチには永続的な証明が必要です：
+## エージェントプロファイル（15種）
 
-- `TeamCreate` が呼び出され、記録されなければなりません。
-- `TaskCreate` が実際のチームメイトタスクを生成しなければなりません。
-- チームメイトエージェントはチームスコープの `Agent` ツールを通じて起動されなければ
-  なりません。
-- `SendMessage` 呼び出しは要約ではなく、実際のメッセージイベントとして表示されなければ
-  なりません。
-- 要約のみの委任や Team Agents 証拠のない通常のサブエージェント委任は証明検証失敗
-  となります。
+| # | プロファイル |
+|---|---|
+| 1 | Code Reviewer（コードレビュアー）|
+| 2 | Data Analyst（データアナリスト）|
+| 3 | Ideation Catalyst（アイデア触媒）|
+| 4 | Implementation Engineer（実装エンジニア）|
+| 5 | Knowledge Curator（ナレッジキュレーター）|
+| 6 | Orchestrator Planner（オーケストレータープランナー）|
+| 7 | Product Strategist（プロダクトストラテジスト）|
+| 8 | QA Verifier（QA検証者）|
+| 9 | Release Manager（リリースマネージャー）|
+| 10 | Research Synthesizer（リサーチシンセサイザー）|
+| 11 | Security Reviewer（セキュリティレビュアー）|
+| 12 | System Architect（システムアーキテクト）|
+| 13 | Technical Writer（テクニカルライター）|
+| 14 | UX Design Reviewer（UXデザインレビュアー）|
+| 15 | Web Research Operator（ウェブリサーチオペレーター）|
 
-## ランナー所有アーティファクト
+プロファイルはツール・認証情報・フック・ファイルシステム権限・プロバイダーホームアクセスを**付与しません**。  
+定義場所：`examples/agents/kdh-profile-catalog.json`
 
-ランナーが所有するもの：プロンプト構築、回答パス割り当て、ステータス JSON、
-証明 JSON、イベント順序、アーティファクトハッシュ、クレーム/ゲート/オーケスト
-レーターアーティファクト、最終結果および検証出力。プロバイダーシートは回答内容
-のみを生成します。
+---
 
 ## 成果物プロファイル
 
-実行では `discussion_summary`、`development_contract`、`readme_or_docs`、
-`research_synthesis`、`decision_memo`、`implementation_plan` などの成果物
-プロファイルを選択できます。プロファイル付きの最終回答は、最終 Markdown を
-`KDH_FINAL_ARTIFACT` ブロックに入れます。ランナーはそのブロックを抽出し、必須
-セクション、ハッシュ、`result.json` を検証します。
+最終ラウンドのプロバイダーは、最終回答を `KDH_FINAL_ARTIFACT` ブロック内に配置する必要があります：
 
-## 制限事項とリリース状況
+```markdown
+<!-- KDH_FINAL_ARTIFACT path="final/development-contract.md" profile="development_contract" -->
+# Development Contract
 
-このリポジトリは公開初期段階の作業です。すべてのアダプターが本番環境の成熟度に
-達しているわけではありません。`claude_k` はスモーク専用です。モデル名および
-エフォートラベルは安定したものとして扱わず、設定時（`model-refresh`）に更新して
-ください。
+...内容...
+
+<!-- /KDH_FINAL_ARTIFACT -->
+```
+
+| プロファイル | 説明 |
+|---|---|
+| `discussion_summary` | マルチラウンドディスカッションの構造化要約 |
+| `development_contract` | エンジニアリングスコープとインターフェース契約 |
+| `readme_or_docs` | ドキュメントアーティファクト |
+| `research_synthesis` | 調査結果とソース帰属 |
+| `decision_memo` | 根拠を含む意思決定記録 |
+| `implementation_plan` | 段階的実行計画 |
+
+---
+
+## 認証プリフライト
+
+ライブディスパッチ前に必ず実行してください：
+
+```bash
+bin/providers-discuss auth-preflight providers-discuss.config.json --report-dir ./auth-report
+```
+
+レポートは OAuth トークン・Cookie・プロバイダー設定・認証情報ファイル・シェル履歴を**絶対にコピーしません**。
+
+---
+
+## Claude Team Agents 証明要件
+
+`claude_k_team_agents` のライブディスパッチには、以下すべてが永続的な証明アーティファクトとして記録される必要があります：
+
+1. `TeamCreate` の呼び出しと記録
+2. `TaskCreate` による実際のチームメイトタスクの生成
+3. チームメイトエージェントをチームスコープの `Agent` ツール経由で起動
+4. `SendMessage` が要約ではなく実際のメッセージイベントとして表示
+5. 要約のみの委任または Team Agents 証拠のない通常のサブエージェント委任 = **証明検証失敗**
+
+---
+
+## 制限事項
+
+- このリポジトリは**公開初期段階の作業**です。すべてのアダプターが本番環境の成熟度に達しているわけではありません。
+- `claude_k` はスモーク専用で、本番マルチラウンド実行には適していません。
+- 安定版リリース前に `AGENTS.md` の検証コマンドをすべて実行し、ライセンス問題を解決してください。
+
+---
 
 ## ライセンス
 
-オープンソースライセンスはまだ選択されていません。`LICENSE` ファイルが追加される
-までは、コードは確認用に公開されていますが、オープンソースとして再利用する権利は
-付与されていません。
+オープンソースライセンスはまだ選択されていません。`LICENSE` ファイルが追加されるまで、コードは確認用に公開されていますが、オープンソースとして再利用する権利は**付与されていません**。
+
+---
 
 ---
 
 <a id="spanish"></a>
 
-## Español (Spanish)
-
 # providers-discuss
 
-`providers-discuss` es un **ejecutor local con respaldo en archivos** para
-comparar múltiples sedes de proveedores de IA (GPT/Codex, Claude Team Agents,
-Gemini) en discusiones de múltiples rondas.
+> **Ejecutor local con respaldo en archivos para discusiones de IA multi-proveedor**
+> Compare GPT/Codex, Claude Team Agents y Gemini en debates multi-ronda estructurados, escribiendo cada prompt, respuesta, prueba y hash en disco.
 
-**No es una herramienta para evadir facturación. Es un registro de auditoría
-para razonamiento multi-proveedor.**
+**No es una herramienta para evadir facturación. Es un registro de auditoría para razonamiento multi-proveedor.**
 
-## Por qué ahora
+---
 
-El **15 de junio de 2026**, Anthropic migra el uso del Claude Agent SDK y
-`claude -p` a una ruta de crédito mensual separada. `providers-discuss` fue
-creado para este mundo post-2026-06-15: en lugar de hacer de un CLI de
-proveedor la fuente oculta de verdad, el ejecutor escribe en disco los
-prompts, respuestas, registros, pruebas, hashes, puertas, índices de fuentes
-y deltas del orquestador.
+## Contexto
 
-## Qué es
+El **15 de junio de 2026**, Anthropic migra el uso del Claude Agent SDK y `claude -p` a una ruta de crédito mensual separada. Los scripts que llamaban silenciosamente a `claude -p` necesitan ser reemplazados. `providers-discuss` es ese reemplazo: un ejecutor que posee el contrato de artefactos completo en lugar de depender de un único CLI de proveedor.
 
-- Una CLI local para configurar discusiones de proveedores en múltiples rondas
-  y múltiples sedes.
-- Un ejecutor que escribe artefactos observables bajo un directorio de estado
-  de ejecución.
-- Una superficie de despacho en vivo para transportes GPT/Codex, Claude Team
-  Agents y Gemini (donde el adaptador lo soporte).
-- Un mecanismo de importación manual para archivos de respuesta ya capturados.
-- Un catálogo de 15 perfiles de roles solo de prompts.
-- Un flujo de trabajo de puertas y verificación para mapas de reclamaciones,
-  pruebas de proveedores, hashes y resultados finales.
+---
 
-## Qué no es
+## Qué hace
 
-- No es un demonio de automatización de proveedores oculto, tarea cron,
-  sistema de memoria ni servidor RAG.
-- No recopila tokens OAuth, cookies, estado del navegador ni configuración
-  sin procesar del proveedor.
-- No trata la salida directa de `claude -p`, `codex` o `gemini` como respuesta
-  oficial del proveedor.
-- No trata las vistas previas de simulacro, los accesorios de prueba falsos
-  o la salida de Team Agents de solo resumen como éxito de proveedor en vivo.
-- No es una herramienta para evadir facturación.
-- No es un framework de agentes múltiples genérico ni un servidor MCP.
+- Ejecuta **discusiones multi-ronda estructuradas** en múltiples sedes de proveedores de IA
+- Escribe todos los artefactos observables en disco: prompts, respuestas, logs, pruebas, hashes, resultados de puertas, deltas del orquestador
+- Soporta **despacho en vivo** para GPT/Codex, Claude Team Agents y Gemini (según madurez del adaptador)
+- Proporciona **importación manual de respaldo** para archivos de respuesta pre-capturados
+- Incluye **15 perfiles de agente solo de prompts** (sin concesión de herramientas ni acceso a credenciales)
+- Ejecuta un **flujo de trabajo de puertas y verificación** sobre mapas de reclamaciones, pruebas de proveedores y resultados finales
+
+---
+
+## Qué no hace
+
+- Sin daemons de automatización ocultos, tareas cron, sistemas de memoria ni servidores RAG
+- No recopila tokens OAuth, cookies, estado del navegador ni configuración del proveedor
+- No trata la salida directa de `claude -p` / `codex` / `gemini` como respuesta oficial del proveedor
+- No trata vistas previas de simulacro o salida de Team Agents de solo resumen como éxito en vivo
+- No es una herramienta para evadir facturación
+- No es un framework de agentes múltiples genérico ni un servidor MCP
+
+---
 
 ## Instalación
 
 ```bash
+# Vista previa de lo que instalará
 ./install.sh --dry-run
+
+# Instalar
 ./install.sh
+
+# Verificar
 providers-discuss --help
 ```
 
-## Inicio rápido
+Se instala en `$HOME/.local/bin/providers-discuss` y `$HOME/.codex/skills/kdh-providers-discuss`.  
+**No** toca directorios de proveedores, archivos OAuth, hooks de Claude, configuración del navegador, cron ni daemons.
 
 ```bash
-bin/providers-discuss validate-config providers-discuss.config.json
-bin/providers-discuss auth-preflight providers-discuss.config.json --report-dir ./auth-report
-bin/providers-discuss init --config providers-discuss.config.json --root ./.runs --run-id my-run
-bin/providers-discuss advance my-run --root ./.runs --round-mode live-dispatch
+# Opcional: agregar alias público
+./install.sh --with-public-alias
+
+# Desinstalar
+./install.sh --uninstall
+
+# Ejecutar sin instalar
+bin/providers-discuss --help
 ```
 
-## Tabla de madurez de adaptadores
+---
 
-| Elección | Transporte | Madurez | Notas |
+## Inicio rápido: 3 rondas, 3 sedes, despacho en vivo
+
+```bash
+# 1. Configurar variables de entorno
+RUN_ID=my-3seat-run
+ROOT="$PWD/.runs"
+CONFIG=providers-discuss.config.json
+
+# 2. Validar el archivo de configuración
+bin/providers-discuss validate-config "$CONFIG"
+
+# 3. Verificar autenticación de proveedores antes de gastar créditos
+bin/providers-discuss auth-preflight "$CONFIG" --report-dir "$PWD/auth-report"
+
+# 4. Inicializar el directorio de estado de ejecución
+bin/providers-discuss init --config "$CONFIG" --root "$ROOT" --run-id "$RUN_ID"
+
+# 5. Construir el paquete de entrada (generación de prompts)
+bin/providers-discuss build-input-pack --config "$CONFIG" --root "$ROOT" --run-id "$RUN_ID"
+
+# 6. Avanzar por las rondas (despacho en vivo)
+bin/providers-discuss advance "$RUN_ID" --root "$ROOT" --round-mode live-dispatch
+
+# 7. Revisar el estado de ejecución
+bin/providers-discuss status "$RUN_ID" --root "$ROOT"
+
+# 8. Verificar artefactos y pruebas
+bin/providers-discuss verify "$RUN_ID" --root "$ROOT"
+```
+
+---
+
+## Referencia de adaptadores de proveedores
+
+| Proveedor | Transporte | Estado | Notas |
 |---|---|---|---|
-| `gpt/codex` | `codex_exec_file` | en vivo sin cabeza | archivo de respuesta del ejecutor + marcador `KDH_CODEX_DONE` |
-| `claude` | `claude_k` | **solo humo** | ruta de humo de Claude Code interactivo; no despacho en vivo multirronda normal |
-| `claude team agents` | `claude_k_team_agents` | agentes de equipo en vivo | requiere prueba de TeamCreate / SendMessage |
-| `gemini` | `gemini_cli` | en vivo sin cabeza | confianza del espacio de trabajo del proceso hijo; captura JSON/stdout |
-| reserva | `manual` | reserva | importar respuestas ya creadas; no es una elección de proveedor |
+| `gpt/codex` | `codex_exec_file` | ✅ En vivo sin cabeza | Archivo de respuesta del ejecutor + marcador `KDH_CODEX_DONE` |
+| `claude` | `claude_k` | ⚠️ Solo humo | Ruta de humo de Claude Code interactivo — no válido para despacho multi-ronda normal |
+| `claude team agents` | `claude_k_team_agents` | ✅ En vivo | Requiere artefactos de prueba de `TeamCreate` / `SendMessage` |
+| `gemini` | `gemini_cli` | ✅ En vivo sin cabeza | Confianza del espacio de trabajo del proceso hijo; captura JSON/stdout |
+| *(reserva)* | `manual` | 🔁 Reserva | Importar archivos de respuesta pre-creados — no es una selección de proveedor |
 
-## Perfiles de agente
+> **Nota:** `claude` (`claude_k`) es solo para pruebas de humo. Para despacho en vivo de Claude, use `claude team agents` con artefactos de prueba persistentes.
 
-Los perfiles de agente son contratos de roles solo de prompts. El catálogo
-incluye 15 perfiles. Los perfiles no otorgan herramientas, credenciales,
-hooks, permisos de sistema de archivos ni acceso al proveedor principal.
+---
 
-## Seguridad de autenticación y credenciales
+## Estructura de artefactos de ejecución
 
-`auth-preflight` verifica los asientos seleccionados antes del trabajo en
-vivo. El informe está saneado: registra las clases de preparación y nunca
-copia tokens OAuth, cookies, cuerpos de configuración del proveedor,
-archivos de credenciales ni historial de shell.
+```
+.runs/<run-id>/
+├── run.json                          # Metadatos de ejecución y snapshot de configuración
+├── events.jsonl                      # Log de eventos ordenados
+├── inputs/input-pack.md              # Paquete de entrada de prompts construido
+├── prompts/round-R<n>/<seat>.prompt.md   # Prompts por sede
+├── answers/round-R<n>/<seat>.md          # Respuestas del proveedor
+├── logs/round-R<n>/
+│   ├── <seat>.status.json            # Estado del despacho
+│   └── <seat>.proof.json             # Prueba del proveedor
+├── claims/round-R<n>-claim-map.json  # Reclamaciones extraídas por sede
+├── gates/round-R<n>-gate.md          # Resultado de evaluación de puerta
+├── orchestrator/round-R<n>-review.md # Síntesis del orquestador
+├── result.json                       # Resultado final
+└── verify.json                       # Salida de verificación
+```
 
-El despacho en vivo de Gemini establece `GEMINI_CLI_TRUST_WORKSPACE=true`
-solo para el proceso hijo y lo registra en los artefactos de prueba. El
-ejecutor no muta la configuración del proveedor Gemini ni copia credenciales.
+Los asientos de proveedores escriben **solo el contenido de respuesta**. No escriben directamente en el bus de eventos, hashes, puertas ni archivos de prueba.
 
-## Requisitos de prueba de Team Agents
+---
 
-El despacho en vivo de Claude Team Agents requiere prueba duradera:
+## Perfiles de agente (15 roles)
 
-- `TeamCreate` debe ser llamado y registrado.
-- `TaskCreate` debe producir tareas reales de compañeros de equipo.
-- Los agentes compañeros deben lanzarse a través de la herramienta `Agent`
-  con ámbito de equipo.
-- Las llamadas a `SendMessage` deben aparecer como eventos de mensajes reales,
-  no resúmenes.
-- La delegación de solo resumen o la delegación de subagente ordinaria sin
-  evidencia de Team Agents resulta en falla de verificación de prueba.
+| # | Perfil |
+|---|---|
+| 1 | Code Reviewer (Revisor de código) |
+| 2 | Data Analyst (Analista de datos) |
+| 3 | Ideation Catalyst (Catalizador de ideas) |
+| 4 | Implementation Engineer (Ingeniero de implementación) |
+| 5 | Knowledge Curator (Curador de conocimiento) |
+| 6 | Orchestrator Planner (Planificador orquestador) |
+| 7 | Product Strategist (Estratega de producto) |
+| 8 | QA Verifier (Verificador QA) |
+| 9 | Release Manager (Gerente de versiones) |
+| 10 | Research Synthesizer (Sintetizador de investigación) |
+| 11 | Security Reviewer (Revisor de seguridad) |
+| 12 | System Architect (Arquitecto de sistemas) |
+| 13 | Technical Writer (Escritor técnico) |
+| 14 | UX Design Reviewer (Revisor de diseño UX) |
+| 15 | Web Research Operator (Operador de investigación web) |
 
-## Artefactos del ejecutor
+Definidos en `examples/agents/kdh-profile-catalog.json`. Los perfiles **no otorgan** herramientas, credenciales, hooks, permisos de sistema de archivos ni acceso al proveedor.
 
-El ejecutor posee: construcción de prompts, asignación de rutas de respuesta,
-JSON de estado, JSON de prueba, ordenación de eventos, hashes de artefactos,
-artefactos de reclamación/puerta/orquestador y salidas de resultado y
-verificación finales. Los asientos de proveedores producen solo contenido de
-respuesta.
+---
 
 ## Perfiles de entregable
 
-Una ejecución puede elegir perfiles de entregable como `discussion_summary`,
-`development_contract`, `readme_or_docs`, `research_synthesis`,
-`decision_memo` o `implementation_plan`. Las respuestas finales con perfil
-deben colocar el Markdown final dentro de un bloque `KDH_FINAL_ARTIFACT`; el
-ejecutor extrae ese bloque, revisa secciones requeridas, registra hashes y
-actualiza `result.json`.
+El proveedor del último turno debe colocar la respuesta final dentro de un bloque `KDH_FINAL_ARTIFACT`:
 
-## Limitaciones y estado de lanzamiento
+```markdown
+<!-- KDH_FINAL_ARTIFACT path="final/development-contract.md" profile="development_contract" -->
+# Development Contract
 
-Este repositorio es trabajo público en etapa temprana. No todos los adaptadores
-han alcanzado madurez de producción. `claude_k` es solo de humo. Los nombres
-de modelos y etiquetas de esfuerzo deben actualizarse en el momento de la
-configuración con `model-refresh` en lugar de tratarlos como estables.
+...contenido...
+
+<!-- /KDH_FINAL_ARTIFACT -->
+```
+
+| Perfil | Descripción |
+|---|---|
+| `discussion_summary` | Síntesis estructurada del debate multi-ronda |
+| `development_contract` | Alcance de ingeniería y contrato de interfaz |
+| `readme_or_docs` | Artefacto de documentación |
+| `research_synthesis` | Hallazgos de investigación con atribución de fuentes |
+| `decision_memo` | Registro de decisión con justificación |
+| `implementation_plan` | Plan de ejecución por fases |
+
+---
+
+## Verificación previa de autenticación
+
+Ejecutar antes de cada despacho en vivo:
+
+```bash
+bin/providers-discuss auth-preflight providers-discuss.config.json --report-dir ./auth-report
+```
+
+El informe **nunca** copia tokens OAuth, cookies, configuraciones de proveedor, archivos de credenciales ni historial de shell.
+
+---
+
+## Requisitos de prueba de Claude Team Agents
+
+El despacho en vivo con `claude_k_team_agents` requiere que todos los elementos siguientes estén registrados como artefactos de prueba persistentes:
+
+1. `TeamCreate` debe ser llamado y registrado
+2. `TaskCreate` debe generar tareas reales de compañeros de equipo
+3. Los agentes compañeros deben lanzarse mediante la herramienta `Agent` con ámbito de equipo
+4. Las llamadas a `SendMessage` deben aparecer como eventos de mensajes reales — no resúmenes
+5. Delegación de solo resumen o subagente ordinario sin evidencia de Team Agents = **fallo de verificación de prueba**
+
+---
+
+## Limitaciones
+
+- Este repositorio es **trabajo público en etapa temprana**. No todos los adaptadores han alcanzado madurez de producción.
+- `claude_k` es solo para pruebas de humo, no apto para ejecuciones multi-ronda en producción.
+- Antes de publicar una versión estable, ejecute los comandos de verificación en `AGENTS.md` y resuelva el problema de licencia.
+
+---
 
 ## Licencia
 
-Todavía no se ha seleccionado una licencia de código abierto. Hasta que se
-agregue un archivo `LICENSE`, el código está visible para inspección, pero no
-se concede permiso de reutilización como código abierto.
+Todavía no se ha seleccionado una licencia de código abierto. Hasta que se agregue un archivo `LICENSE`, el código está visible para inspección pero **no** se otorga permiso de reutilización bajo ninguna licencia de código abierto.
