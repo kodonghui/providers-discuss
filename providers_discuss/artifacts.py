@@ -141,6 +141,7 @@ def ensure_run_dirs(base: Path) -> None:
         "claims",
         "gates",
         "orchestrator",
+        "final",
         "hashes",
     ):
         (base / rel).mkdir(parents=True, exist_ok=True)

@@ -7,6 +7,7 @@ from typing import Any
 
 from .agent_profiles import render_agent_profile_contract
 from .artifacts import DEFAULT_PROVIDER_TIMEOUT_SECONDS, copy_answer, sha256_file, write_artifact_hash, write_json
+from .profiles import render_deliverable_profile_contract
 
 
 ADAPTER_RESULT_SCHEMA = "kdh.providers-discuss.adapter-result.v1"
@@ -286,9 +287,9 @@ def write_dry_run_result(*, base: Path, run: dict[str, Any], spec: dict[str, Any
     seat_id = seat["seat_id"]
     required = seat.get("required", True) is not False
     answer_rel = prompt_result["answer_path"]
-    status_rel = prompt_result["status_path"]
-    proof_rel = prompt_result["proof_path"]
-    preview_rel = prompt_result["preview_path"]
+    status_rel = f"logs/round-{round_id}/previews/{seat_id}.status.json"
+    proof_rel = f"logs/round-{round_id}/previews/{seat_id}.proof.json"
+    preview_rel = f"logs/round-{round_id}/previews/{seat_id}.command-preview.json"
     status_path = base / status_rel
     proof_path = base / proof_rel
     preview_path = base / preview_rel
@@ -309,6 +310,7 @@ def write_dry_run_result(*, base: Path, run: dict[str, Any], spec: dict[str, Any
         "live_dispatch": summary["live_dispatch"],
         "live_dispatch_available": summary["live_dispatch_available"],
         "timeout_seconds": summary["timeout_seconds"],
+        "preview": True,
         "command_preview": summary["command_preview"],
         "secret_policy": "OAuth tokens, cookies, provider-home raw config, credential file bodies, and shell history are not collected or stored.",
     }
@@ -321,6 +323,7 @@ def write_dry_run_result(*, base: Path, run: dict[str, Any], spec: dict[str, Any
         "transport": seat.get("transport", ""),
         "adapter_id": summary["adapter_id"],
         "mode": "dry-run",
+        "preview": True,
         "status": status,
         "required": required,
         "answer_path": "",
@@ -341,6 +344,7 @@ def write_dry_run_result(*, base: Path, run: dict[str, Any], spec: dict[str, Any
         "transport": seat.get("transport", ""),
         "adapter_id": summary["adapter_id"],
         "proof_kind": "dry_run_preview",
+        "preview": True,
         "status": status,
         "required": required,
         "answer_path": "",
@@ -398,6 +402,7 @@ def render_provider_prompt(
     round_id = spec["round_id"]
     run_context = _run_context_section(run=run, round_id=round_id)
     round_contract = _round_output_contract(spec)
+    deliverable_contract = render_deliverable_profile_contract(run=run, spec=spec)
     return f"""# kdh-providers-discuss Provider Prompt
 
 run_id: `{run['run_id']}`
@@ -424,6 +429,7 @@ live_dispatch_available: `{summary['live_dispatch_available']}`
 {spec['title']}
 
 {round_contract}
+{deliverable_contract}
 {profile_contract}
 {run_context}
 

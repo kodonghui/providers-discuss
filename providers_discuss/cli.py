@@ -77,6 +77,17 @@ from .input_pack import (
 )
 from .model_refresh import refresh_models
 from .proofs import validate_team_agents_proof, validate_transport_proof
+from .profiles import (
+    annotate_rounds_with_deliverable_profile,
+    builtin_deliverable_profile,
+    config_deliverable_profile,
+    convergence_start_round,
+    extract_final_artifact_blocks,
+    has_markdown_section,
+    normalize_deliverable_profile,
+    safe_artifact_path,
+    section_presence,
+)
 from .provider_auth import inspect_seat_auth, login_hint_for_transport, parse_cli_path_overrides, run_auth_preflight
 from .provider_adapters import (
     ADAPTER_RESULT_SCHEMA,
@@ -449,6 +460,7 @@ def cmd_init(args: argparse.Namespace) -> int:
             raise ValueError("invalid public config: " + json.dumps(validation["blockers"], ensure_ascii=False))
         rounds = rounds_from_public_config(dynamic_config)
         provider_seats = provider_seats_from_public_config(dynamic_config, config_path=args.config)
+        deliverable_profile = config_deliverable_profile(dynamic_config)
         objective = args.objective or str(dynamic_config.get("objective") or "").strip()
         preset = "custom"
         config_ref = str(args.config)
@@ -456,6 +468,8 @@ def cmd_init(args: argparse.Namespace) -> int:
         if not args.objective:
             raise ValueError("--objective is required with --preset")
         rounds = [dict(item) for item in ROUND_PLANS[args.preset]]
+        deliverable_profile = builtin_deliverable_profile("discussion_summary")
+        rounds = annotate_rounds_with_deliverable_profile(rounds, deliverable_profile)
         provider_seats = provider_seats_for_preset(args.preset)
         objective = args.objective
         preset = args.preset
@@ -482,6 +496,7 @@ def cmd_init(args: argparse.Namespace) -> int:
         "current_round": rounds[0]["round_id"],
         "root": str(base),
         "rounds": rounds,
+        "deliverable_profile": deliverable_profile,
         "provider_seats_path": "config/provider-seats.json",
         "source_index_path": "config/source-index.json",
         "policy": {
@@ -1054,6 +1069,11 @@ def cmd_status(args: argparse.Namespace) -> int:
         "run_id": args.run_id,
         "state": run.get("state"),
         "current_round": run.get("current_round"),
+        "active_round": run.get("active_round", ""),
+        "active_seats": run.get("active_seats", []),
+        "dispatch_mode": run.get("dispatch_mode", ""),
+        "dispatch_started_at": run.get("dispatch_started_at", ""),
+        "deliverable_profile": (run.get("deliverable_profile") or {}).get("id", "") if isinstance(run.get("deliverable_profile"), dict) else "",
         "preset": run.get("preset"),
         "last_event": last_event,
         "next_action": _next_action_for_state(run),
@@ -1065,6 +1085,9 @@ def cmd_status(args: argparse.Namespace) -> int:
         print(f"run_id: {args.run_id}")
         print(f"state: {payload['state']}")
         print(f"current_round: {payload['current_round']}")
+        if payload["active_round"]:
+            print(f"active_round: {payload['active_round']}")
+            print(f"active_seats: {', '.join(payload['active_seats'])}")
         print(f"next_action: {payload['next_action']}")
         print(f"last_event: {last_event.get('event_id', '')} {last_event.get('type', '')}")
     return 0
@@ -1199,6 +1222,13 @@ def run_round_live_dispatch(base: Path, run: dict[str, Any], spec: dict[str, Any
             seats_to_dispatch.append((index, seat))
         else:
             indexed_results[index] = reused
+    run["state"] = "round_running"
+    run["current_round"] = round_id
+    run["active_round"] = round_id
+    run["active_seats"] = [seat["seat_id"] for _, seat in seats_to_dispatch]
+    run["dispatch_mode"] = "live-dispatch"
+    run["dispatch_started_at"] = utc_now()
+    save_run(base, run)
     append_event(
         base,
         "round.live_dispatch_started",
@@ -1263,6 +1293,7 @@ def run_round_live_dispatch(base: Path, run: dict[str, Any], spec: dict[str, Any
         for item in results
         if item["required"] and item["status"] != "completed" and item["failure_classification"] != FAILURE_UNSUPPORTED_LIVE_DISPATCH
     ]
+    _clear_active_dispatch(run)
     if failed_required:
         verify = {
             "schema": VERIFY_SCHEMA,
@@ -1354,6 +1385,11 @@ def _completed_live_dispatch_result(base: Path, run: dict[str, Any], spec: dict[
         "adapter": adapter_summary(seat),
         "reused": True,
     }
+
+
+def _clear_active_dispatch(run: dict[str, Any]) -> None:
+    for key in ("active_round", "active_seats", "dispatch_mode", "dispatch_started_at"):
+        run.pop(key, None)
 
 
 def _live_dispatch_seat(
@@ -1499,6 +1535,11 @@ def cmd_gate(args: argparse.Namespace) -> int:
     claim_result = validate_claim_map(claim_map_path)
     unsupported = claim_result["unsupported_load_bearing_claims"]
     blockers = [*provider_blockers, *claim_result["blockers"]]
+    deliverable_gate: dict[str, Any] | None = None
+    if args.terminal:
+        _write_final_artifacts_from_answers(base=base, run=run, final_round=args.round)
+        deliverable_gate = _deliverable_gate_payload(base=base, run=run, final_round=args.round)
+        blockers.extend(deliverable_gate.get("blockers", []))
     if claim_result.get("semantic_claim_count", 0) == 0:
         blockers.append(
             {
@@ -1540,6 +1581,8 @@ def cmd_gate(args: argparse.Namespace) -> int:
         "basis": claim_result["basis"] + [item.get("seat_id", "") for item in provider_blockers if item.get("seat_id")],
         "next_action": _next_action_for_gate(run, args.round, verdict),
     }
+    if deliverable_gate is not None:
+        gate_payload["deliverable_gate"] = deliverable_gate
     gate_rel = f"gates/round-{args.round}-gate.md"
     (base / gate_rel).write_text(_gate_markdown(args.round, gate_payload), encoding="utf-8")
     write_artifact_hash(base, gate_rel)
@@ -1547,7 +1590,7 @@ def cmd_gate(args: argparse.Namespace) -> int:
         "schema": VERIFY_SCHEMA,
         "run_id": args.run_id,
         "status": "pass" if verdict.startswith("proceed") else "fail",
-        "checks": provider_checks + claim_result["checks"],
+        "checks": provider_checks + claim_result["checks"] + ((deliverable_gate or {}).get("checks", [])),
         "blockers": blockers,
     }
     write_json(base / "verify.json", verify)
@@ -1579,8 +1622,8 @@ def cmd_orchestrate(args: argparse.Namespace) -> int:
     next_round = "" if gate_payload.get("verdict") in terminal_verdicts() else next_round_id(run, after)
     review_rel = f"orchestrator/round-{after}-review.md"
     delta_rel = f"prompts/round-{next_round}.prompt-delta.md" if next_round else f"prompts/round-{after}.terminal-delta.md"
-    (base / review_rel).write_text(_orchestrator_review(after, next_round, carried, gate_path), encoding="utf-8")
-    (base / delta_rel).write_text(_prompt_delta(after, next_round, carried), encoding="utf-8")
+    (base / review_rel).write_text(_orchestrator_review(base, run, after, next_round, carried, gate_path), encoding="utf-8")
+    (base / delta_rel).write_text(_prompt_delta(base, run, after, next_round, carried), encoding="utf-8")
     write_artifact_hash(base, review_rel)
     write_artifact_hash(base, delta_rel)
     append_event(base, "orchestrator.review_written", run_id=args.run_id, round_id=after, refs=[review_rel])
@@ -2209,8 +2252,7 @@ def cmd_advance(args: argparse.Namespace) -> int:
                     break
                 continue
             if verdict in terminal_verdicts():
-                if not (base / "result.json").exists():
-                    _write_auto_result(base=base, run=run, final_round=current_round)
+                _write_auto_result(base=base, run=run, final_round=current_round)
                 rc = _advance_call(cmd_finalize, argparse.Namespace(root=args.root, run_id=args.run_id), quiet=args.json)
                 actions.append({"action": "finalize", "status": "pass" if rc == 0 else "fail"})
                 if rc != 0:
@@ -2222,8 +2264,7 @@ def cmd_advance(args: argparse.Namespace) -> int:
             exit_code = 1
             break
         if state == "finalizing":
-            if not (base / "result.json").exists():
-                _write_auto_result(base=base, run=run, final_round=current_round)
+            _write_auto_result(base=base, run=run, final_round=current_round)
             rc = _advance_call(cmd_finalize, argparse.Namespace(root=args.root, run_id=args.run_id), quiet=args.json)
             actions.append({"action": "finalize", "status": "pass" if rc == 0 else "fail"})
             if rc != 0:
@@ -2500,8 +2541,7 @@ def _language_hits(text: str) -> set[str]:
 
 def _write_auto_result(*, base: Path, run: dict[str, Any], final_round: str) -> None:
     result_path = base / "result.json"
-    if result_path.exists():
-        return
+    _write_final_artifacts_from_answers(base=base, run=run, final_round=final_round)
     answer_refs: list[dict[str, Any]] = []
     for seat in provider_seats(base):
         seat_id = str(seat.get("seat_id") or "")
@@ -2517,14 +2557,18 @@ def _write_auto_result(*, base: Path, run: dict[str, Any], final_round: str) -> 
                     "status_path": status_rel if (base / status_rel).exists() else "",
                 }
             )
+    deliverable_gate = _deliverable_gate_payload(base=base, run=run, final_round=final_round)
     payload = {
         "schema": "kdh.providers-discuss.result.v1",
+        "result_version": 2,
         "run_id": run["run_id"],
         "status": "completed",
         "objective": run.get("objective", ""),
         "final_round": final_round,
+        "deliverable_profile": normalize_deliverable_profile(run.get("deliverable_profile")),
         "answer_refs": answer_refs,
         "final_artifacts": _detect_final_artifacts(base, run),
+        "deliverable_gate": deliverable_gate,
         "acceptance_checklist": _final_acceptance_checklist(base, final_round),
         "summary": "Auto-generated completion result from final-round provider answer artifacts.",
         "generated_by": "providers-discuss advance",
@@ -2536,10 +2580,23 @@ def _write_auto_result(*, base: Path, run: dict[str, Any], final_round: str) -> 
 
 def _detect_final_artifacts(base: Path, run: dict[str, Any]) -> list[dict[str, Any]]:
     objective = str(run.get("objective") or "").lower()
+    profile = normalize_deliverable_profile(run.get("deliverable_profile"))
     artifacts: list[dict[str, Any]] = []
-    if "readme" not in objective:
-        return artifacts
     seen: set[Path] = set()
+    for configured in profile.get("final_artifacts", []):
+        rel = str(configured.get("path") or "")
+        try:
+            path = safe_artifact_path(base, rel)
+        except ValueError:
+            continue
+        if path in seen or not path.exists():
+            continue
+        seen.add(path)
+        metadata = _artifact_metadata(path=path, base=base, artifact_type=profile.get("id", "deliverable"), profile=profile)
+        metadata["configured"] = True
+        artifacts.append(metadata)
+    if "readme" not in objective and str(profile.get("id") or "") != "readme_or_docs":
+        return artifacts
     for root in (base, base.parent, base.parent.parent):
         readme = (root / "README.md").resolve()
         if readme in seen or not readme.exists():
@@ -2549,22 +2606,136 @@ def _detect_final_artifacts(base: Path, run: dict[str, Any]) -> list[dict[str, A
             text = readme.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-        artifacts.append(
-            {
-                "path": _display_path(readme, base),
-                "artifact_type": "readme",
-                "line_count": text.count("\n") + 1,
-                "language_sections": _readme_language_sections(text),
-                "policy_markers": {
-                    "claude_p": "claude -p" in text,
-                    "agent_sdk": "Agent SDK" in text,
-                    "date_2026_06_15": "2026-06-15" in text or "June 15, 2026" in text,
-                    "billing_bypass": "billing bypass" in text.lower(),
-                    "claude_k_team_agents": "claude_k_team_agents" in text,
-                },
-            }
-        )
+        artifacts.append(_artifact_metadata(path=readme, base=base, artifact_type="readme", profile=profile, text=text))
     return artifacts
+
+
+def _write_final_artifacts_from_answers(*, base: Path, run: dict[str, Any], final_round: str) -> list[dict[str, Any]]:
+    profile = normalize_deliverable_profile(run.get("deliverable_profile"))
+    if not profile.get("final_artifacts"):
+        return []
+    allowed_paths = {str(item.get("path") or "") for item in profile.get("final_artifacts", [])}
+    written: list[dict[str, Any]] = []
+    for seat in provider_seats(base):
+        seat_id = str(seat.get("seat_id") or "")
+        answer_rel = f"answers/round-{final_round}/{seat_id}.md"
+        answer_path = base / answer_rel
+        if not answer_path.exists():
+            continue
+        text = answer_path.read_text(encoding="utf-8", errors="replace")
+        for block in extract_final_artifact_blocks(text, source_ref=answer_rel):
+            rel = str(block.get("path") or "")
+            if rel not in allowed_paths:
+                continue
+            if block.get("profile") and str(block["profile"]) != str(profile.get("id")):
+                continue
+            target = safe_artifact_path(base, rel)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(str(block.get("content") or ""), encoding="utf-8")
+            digest = write_artifact_hash(base, rel)
+            record = {
+                "path": rel,
+                "source_ref": answer_rel,
+                "sha256": digest,
+            }
+            written.append(record)
+            append_event(base, "final_artifact.extracted", run_id=run["run_id"], round_id=final_round, refs=[rel, answer_rel], seat_id=seat_id)
+    return written
+
+
+def _deliverable_gate_payload(*, base: Path, run: dict[str, Any], final_round: str) -> dict[str, Any]:
+    profile = normalize_deliverable_profile(run.get("deliverable_profile"))
+    checks: list[dict[str, Any]] = []
+    blockers: list[dict[str, Any]] = []
+    if str(profile.get("id") or "") == "discussion_summary":
+        return {
+            "status": "skipped",
+            "profile_id": profile.get("id"),
+            "checks": checks,
+            "blockers": blockers,
+        }
+    for configured in profile.get("final_artifacts", []):
+        rel = str(configured.get("path") or "")
+        required = configured.get("required") is not False
+        try:
+            path = safe_artifact_path(base, rel)
+        except ValueError as exc:
+            checks.append({"name": f"final_artifact_path_{rel}", "status": "fail", "refs": [rel], "note": str(exc)})
+            blockers.append({"check": "final_artifact_path", "path": rel, "reason": str(exc)})
+            continue
+        exists = path.exists()
+        checks.append({"name": f"final_artifact_exists_{rel}", "status": "pass" if exists else "fail", "refs": [rel]})
+        if required and not exists:
+            blockers.append({"check": "final_artifact_exists", "path": rel, "reason": "required final artifact missing"})
+            continue
+        if not exists:
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        if required and not text.strip():
+            checks.append({"name": f"final_artifact_nonempty_{rel}", "status": "fail", "refs": [rel]})
+            blockers.append({"check": "final_artifact_nonempty", "path": rel, "reason": "required final artifact is empty"})
+        else:
+            checks.append({"name": f"final_artifact_nonempty_{rel}", "status": "pass", "refs": [rel]})
+        presence = section_presence(text, list(profile.get("required_sections") or []))
+        for section, status in presence.items():
+            checks.append({"name": f"required_section_{section}", "status": "pass" if status == "present" else "fail", "refs": [rel]})
+            if status != "present":
+                blockers.append({"check": "required_section_present", "path": rel, "section": section, "reason": "required section missing"})
+        blockers.extend(_profile_quality_blockers(profile=profile, text=text, rel=rel, checks=checks))
+    return {
+        "status": "pass" if not blockers else "fail",
+        "profile_id": profile.get("id"),
+        "checks": checks,
+        "blockers": blockers,
+    }
+
+
+def _profile_quality_blockers(*, profile: dict[str, Any], text: str, rel: str, checks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    blockers: list[dict[str, Any]] = []
+    gates = set(profile.get("quality_gates") or [])
+    if "verification_is_executable" in gates:
+        ok = bool(re.search(r"```(?:bash|sh|shell)?\n[^`]*(?:pytest|unittest|git diff --check|providers-discuss|python3? -m|npm test|go test|cargo test)", text, re.IGNORECASE))
+        checks.append({"name": "verification_is_executable", "status": "pass" if ok else "fail", "refs": [rel]})
+        if not ok:
+            blockers.append({"check": "verification_is_executable", "path": rel, "reason": "Verification Plan lacks an executable command block"})
+    if "acceptance_criteria_are_testable" in gates:
+        ok = has_markdown_section(text, "Acceptance Criteria") and bool(re.search(r"(^|\n)\s*(-|\d+\.)\s+.*(pass|fail|verify|test|must|should|완료|검증)", text, re.IGNORECASE))
+        checks.append({"name": "acceptance_criteria_are_testable", "status": "pass" if ok else "fail", "refs": [rel]})
+        if not ok:
+            blockers.append({"check": "acceptance_criteria_are_testable", "path": rel, "reason": "Acceptance Criteria is missing or not checkable"})
+    if "open_questions_are_explicit" in gates:
+        ok = has_markdown_section(text, "Open Questions / Deferred Items") or has_markdown_section(text, "Open Questions")
+        checks.append({"name": "open_questions_are_explicit", "status": "pass" if ok else "fail", "refs": [rel]})
+        if not ok:
+            blockers.append({"check": "open_questions_are_explicit", "path": rel, "reason": "Open questions/deferred items section missing"})
+    if "policy_boundary_present" in gates:
+        lowered = text.lower()
+        ok = "billing bypass" in lowered or "policy" in lowered or "safety" in lowered or "claude -p" in lowered
+        checks.append({"name": "policy_boundary_present", "status": "pass" if ok else "fail", "refs": [rel]})
+        if not ok:
+            blockers.append({"check": "policy_boundary_present", "path": rel, "reason": "policy/safety boundary is missing"})
+    return blockers
+
+
+def _artifact_metadata(*, path: Path, base: Path, artifact_type: str, profile: dict[str, Any], text: str | None = None) -> dict[str, Any]:
+    text = text if text is not None else path.read_text(encoding="utf-8", errors="replace")
+    metadata: dict[str, Any] = {
+        "path": _display_path(path, base),
+        "artifact_type": artifact_type,
+        "sha256": sha256_file(path),
+        "line_count": len(text.splitlines()),
+        "required_sections": section_presence(text, list(profile.get("required_sections") or [])),
+    }
+    if path.name.lower() == "readme.md" or artifact_type == "readme":
+        metadata["language_sections"] = _readme_language_sections(text)
+        metadata["policy_markers"] = {
+            "claude_p": "claude -p" in text,
+            "agent_sdk": "Agent SDK" in text,
+            "date_2026_06_15": "2026-06-15" in text or "June 15, 2026" in text,
+            "billing_bypass": "billing bypass" in text.lower(),
+            "claude_k_team_agents": "claude_k_team_agents" in text,
+        }
+    return metadata
 
 
 def _display_path(path: Path, base: Path) -> str:
@@ -2631,10 +2802,15 @@ def cmd_finalize(args: argparse.Namespace) -> int:
     base = must_run_root(args.root, args.run_id)
     run = load_run(base)
     ensure_not_terminal(run, "finalize")
-    result_path = base / "result.json"
-    if not result_path.exists():
-        raise ValueError("result.json missing; route-back: write result.json before finalize")
     gate_path, gate_payload = find_terminal_gate(base)
+    final_round = str(gate_payload.get("round_id") or run.get("current_round") or "")
+    if not final_round:
+        raise ValueError("terminal gate round missing; route-back: rerun terminal gate")
+    _write_auto_result(base=base, run=run, final_round=final_round)
+    result_payload = read_json(base / "result.json")
+    deliverable_gate = result_payload.get("deliverable_gate") if isinstance(result_payload.get("deliverable_gate"), dict) else {}
+    if deliverable_gate.get("status") == "fail":
+        raise ValueError("deliverable gate failed; route-back: fix final artifact before finalize")
     run["state"] = "finished"
     run["final_gate_path"] = str(gate_path.relative_to(base))
     run["result_path"] = "result.json"
@@ -2998,6 +3174,8 @@ def _next_action_for_state(run: dict[str, Any]) -> str:
         return f"collect and import provider answers for {current_round}"
     if state == "round_outputs_collected":
         return f"write claims/round-{current_round}-claim-map.json then run gate"
+    if state == "round_running":
+        return f"wait for live-dispatch providers in {current_round}"
     if state == "round_gated":
         return f"run orchestrate after {current_round} or finalize after a terminal gate"
     if state == "transport_smoke_completed":
@@ -3007,7 +3185,7 @@ def _next_action_for_state(run: dict[str, Any]) -> str:
     if state == "next_round_ready":
         return f"run round {current_round}"
     if state == "finalizing":
-        return "write result.json then run finalize"
+        return "run finalize; it will refresh final artifacts and result.json"
     if state == "finished":
         return "run finished"
     if state == "cancelled":
@@ -3028,7 +3206,9 @@ def _gate_markdown(round_id: str, payload: dict[str, Any]) -> str:
     )
 
 
-def _orchestrator_review(after: str, next_round: str, carried: list[dict[str, Any]], gate_path: Path) -> str:
+def _orchestrator_review(base: Path, run: dict[str, Any], after: str, next_round: str, carried: list[dict[str, Any]], gate_path: Path) -> str:
+    profile = normalize_deliverable_profile(run.get("deliverable_profile"))
+    profile_lines = _deliverable_orchestrator_lines(base=base, run=run, profile=profile)
     lines = [
         f"# Round {after} Orchestrator Review",
         "",
@@ -3058,6 +3238,8 @@ def _orchestrator_review(after: str, next_round: str, carried: list[dict[str, An
                 lines.append(f"  next_action: {action}")
     else:
         lines.append("- none")
+    if profile_lines:
+        lines.extend(["", "## Deliverable Profile Pressure", "", *profile_lines])
     lines.extend(
         [
             "",
@@ -3069,7 +3251,9 @@ def _orchestrator_review(after: str, next_round: str, carried: list[dict[str, An
     return "\n".join(lines) + "\n"
 
 
-def _prompt_delta(after: str, next_round: str, carried: list[dict[str, Any]]) -> str:
+def _prompt_delta(base: Path, run: dict[str, Any], after: str, next_round: str, carried: list[dict[str, Any]]) -> str:
+    profile = normalize_deliverable_profile(run.get("deliverable_profile"))
+    profile_lines = _deliverable_orchestrator_lines(base=base, run=run, profile=profile)
     lines = [
         f"# Prompt Delta After {after}",
         "",
@@ -3091,6 +3275,20 @@ def _prompt_delta(after: str, next_round: str, carried: list[dict[str, Any]]) ->
                 lines.append(f"  - required_follow_up: {action}")
     else:
         lines.append("- none")
+    if profile_lines:
+        lines.extend(
+            [
+                "",
+                "## Deliverable Profile Requirements",
+                "",
+                *profile_lines,
+                "",
+                "Provider instruction:",
+                "- Fill missing or weak deliverable sections before adding new optional ideas.",
+                "- Preserve accepted/rejected/deferred decisions explicitly.",
+                "- Final rounds must emit a `KDH_FINAL_ARTIFACT` block when the profile has final artifacts.",
+            ]
+        )
     lines.extend(
         [
             "",
@@ -3106,3 +3304,32 @@ def _prompt_delta(after: str, next_round: str, carried: list[dict[str, Any]]) ->
         ]
     )
     return "\n".join(lines) + "\n"
+
+
+def _deliverable_orchestrator_lines(*, base: Path, run: dict[str, Any], profile: dict[str, Any]) -> list[str]:
+    if str(profile.get("id") or "") == "discussion_summary":
+        return []
+    total_rounds = len(run.get("rounds") or [])
+    current_round = str(run.get("current_round") or "")
+    gate = _deliverable_gate_payload(base=base, run=run, final_round=current_round)
+    missing_sections = [
+        blocker.get("section", "")
+        for blocker in gate.get("blockers", [])
+        if blocker.get("check") == "required_section_present" and blocker.get("section")
+    ]
+    lines = [
+        f"- profile_id: `{profile.get('id', '')}`",
+        f"- profile_title: `{profile.get('title', '')}`",
+        f"- convergence_start_round: `R{convergence_start_round(total_rounds=total_rounds or 1, profile=profile)}`",
+        "- final_artifacts: " + ", ".join(f"`{item.get('path', '')}`" for item in profile.get("final_artifacts", [])),
+    ]
+    if missing_sections:
+        lines.append("- missing_required_sections: " + ", ".join(f"`{section}`" for section in missing_sections))
+    else:
+        required = profile.get("required_sections") or []
+        lines.append("- required_sections: " + (", ".join(f"`{section}`" for section in required) if required else "none"))
+    if gate.get("status") == "fail":
+        lines.append("- deliverable_gate_status: `fail_or_not_ready`")
+    else:
+        lines.append(f"- deliverable_gate_status: `{gate.get('status', 'unknown')}`")
+    return lines

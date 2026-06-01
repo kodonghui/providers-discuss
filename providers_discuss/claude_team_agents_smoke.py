@@ -204,16 +204,20 @@ def run_claude_team_agents_smoke(
         started_at=started_at,
         trigger_mode=trigger_mode,
         runtime=runtime,
+        process_exit_code=exit_code,
     )
     result = validate_team_agents_proof(proof, base)
+    proof_passed = result["status"] == "pass"
     _write_provider_status_fields(
         status_path=status_path,
         status=status,
-        provider_status="completed" if result["status"] == "pass" else "failed",
+        provider_status="completed" if proof_passed else "failed",
         answer_rel=answer_rel if answer_path.exists() else "",
         proof_rel=proof_rel,
         mode="live-dispatch" if provider_result_artifacts else "smoke-claude-team-agents",
-        failure_classification="" if result["status"] == "pass" else _team_agents_failure(result["blockers"]),
+        failure_classification="" if proof_passed else _team_agents_failure(result["blockers"]),
+        process_exit_code=exit_code,
+        proof_passed=proof_passed,
     )
     write_artifact_hash(base, status_rel)
     write_json(proof_path, proof)
@@ -416,13 +420,25 @@ def _write_provider_status_fields(
     proof_rel: str,
     mode: str,
     failure_classification: str,
+    process_exit_code: int | None,
+    proof_passed: bool,
 ) -> None:
     payload = dict(status)
+    provider_exit_code, cleanup_exit_code, cleanup_signal = _provider_cleanup_exit_codes(
+        process_exit_code=process_exit_code,
+        proof_passed=proof_passed,
+    )
     payload["status"] = provider_status
     payload["answer_path"] = answer_rel
     payload["proof_path"] = proof_rel
     payload["mode"] = mode
     payload["failure_classification"] = failure_classification
+    payload["process_exit_code"] = process_exit_code
+    payload["provider_exit_code"] = provider_exit_code
+    payload["cleanup_exit_code"] = cleanup_exit_code
+    payload["cleanup_signal"] = cleanup_signal
+    payload["cleanup_warning"] = cleanup_exit_code is not None
+    payload["exit_code"] = provider_exit_code
     runtime = payload.get("runtime") if isinstance(payload.get("runtime"), dict) else {}
     if isinstance(runtime.get("model"), dict):
         payload["model"] = runtime["model"].get("effective", "")
@@ -433,6 +449,13 @@ def _write_provider_status_fields(
     if isinstance(runtime.get("timeout_seconds"), dict):
         payload["timeout_seconds"] = runtime["timeout_seconds"].get("effective", payload.get("timeout_seconds"))
     write_json(status_path, payload)
+
+
+def _provider_cleanup_exit_codes(*, process_exit_code: int | None, proof_passed: bool) -> tuple[int | None, int | None, str]:
+    if proof_passed and process_exit_code not in (None, 0):
+        cleanup_signal = "SIGTERM" if process_exit_code in {143, -15} else ""
+        return 0, process_exit_code, cleanup_signal
+    return process_exit_code, None, ""
 
 
 def _team_agents_failure(blockers: list[dict[str, Any]]) -> str:
@@ -758,7 +781,13 @@ def _build_proof(
     started_at: str,
     trigger_mode: str,
     runtime: dict[str, Any],
+    process_exit_code: int | None,
 ) -> dict[str, Any]:
+    proof_shape_passed = not bool(status.get("blocked_reason") or blocked_reason or timed_out or killed)
+    provider_exit_code, cleanup_exit_code, cleanup_signal = _provider_cleanup_exit_codes(
+        process_exit_code=process_exit_code,
+        proof_passed=proof_shape_passed,
+    )
     return {
         "schema": TEAM_AGENTS_PROOF_SCHEMA,
         "transport": "claude_k_team_agents",
@@ -776,6 +805,10 @@ def _build_proof(
         "ordinary_agent_delegation_only": status.get("ordinary_agent_delegation_only", False),
         "summary_only_delegation": status.get("summary_only_delegation", False),
         "blocked_reason": status.get("blocked_reason") or blocked_reason,
+        "process_exit_code": process_exit_code,
+        "provider_exit_code": provider_exit_code,
+        "cleanup_exit_code": cleanup_exit_code,
+        "cleanup_signal": cleanup_signal,
         "timed_out": timed_out,
         "killed": killed,
         "cleanup_after_completion": cleanup_after_completion,

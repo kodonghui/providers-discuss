@@ -36,8 +36,10 @@ test -f "${install_home}/.codex/skills/providers-discuss/SKILL.md"
 grep -q "name: providers-discuss" "${install_home}/.codex/skills/providers-discuss/SKILL.md"
 grep -q "model-refresh --provider gemini" "${pkg}/skills/kdh-providers-discuss/SKILL.md"
 grep -q "run-shape gate" "${pkg}/skills/kdh-providers-discuss/SKILL.md"
+grep -q "deliverable profile" "${pkg}/skills/kdh-providers-discuss/SKILL.md"
 grep -q "Do not call provider CLIs directly" "${pkg}/skills/providers-discuss/SKILL.md"
 grep -q "hardcode a specific Gemini version" "${pkg}/docs/intake-workflow.md"
+grep -q "KDH_FINAL_ARTIFACT" "${pkg}/docs/intake-workflow.md"
 
 "${pkg}/install.sh" --prefix "${install_home}/.local" --codex-home "${install_home}/.codex" --uninstall >/dev/null
 test ! -e "${install_home}/.local/bin/providers-discuss"
@@ -80,10 +82,17 @@ from pathlib import Path
 config = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 assert config["language"]["conversation"] == "Korean"
 assert config["brainstorming"]["mode"] == "light"
+assert config["deliverable_profile"]["id"] == "development_contract"
 assert config["seats"][0]["reasoning_effort"] == "xhigh"
 PY
 PYTHONPATH="${pkg}" python3 - <<'PY'
+from providers_discuss.profiles import normalize_deliverable_profile, section_presence
 from providers_discuss.provider_auth import login_hint_for_transport, login_url_action_for_transport
+
+profile = normalize_deliverable_profile("development_contract")
+assert profile["final_artifacts"][0]["path"] == "final/development-contract.md"
+sections = section_presence("## Requirements Definition\n\nx\n", ["Requirements Definition", "Functional Spec"])
+assert sections == {"Requirements Definition": "present", "Functional Spec": "missing"}
 
 for transport in ("codex_exec_file", "claude_k", "claude_k_team_agents", "gemini_cli"):
     hint = login_hint_for_transport(transport).lower()

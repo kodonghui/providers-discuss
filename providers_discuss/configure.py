@@ -7,6 +7,12 @@ from typing import Any, TextIO
 
 from .artifacts import DEFAULT_PROVIDER_TIMEOUT_SECONDS, DEFAULT_TEAM_AGENTS_DIRECT_MESSAGE_COUNT, write_json
 from .agent_profiles import DEFAULT_AGENT_PROFILE_PRESET, load_agent_profiles, profile_compatibility
+from .profiles import (
+    annotate_rounds_with_deliverable_profile,
+    builtin_deliverable_profile,
+    deliverable_profile_catalog,
+    normalize_deliverable_profile,
+)
 from .public_config import example_public_config, validate_public_config
 
 
@@ -121,7 +127,8 @@ def configure_from_answers(answers: dict[str, Any]) -> dict[str, Any]:
             "enabled": _bool_value(answers.get("use_agent_profile_defaults"), False),
             "preset": _str_value(answers.get("agent_profile_preset"), DEFAULT_AGENT_PROFILE_PRESET),
         }
-    config["rounds"] = _rounds_from_answers(answers)
+    config["deliverable_profile"] = _deliverable_profile_from_answers(answers)
+    config["rounds"] = annotate_rounds_with_deliverable_profile(_rounds_from_answers(answers), config["deliverable_profile"])
     config["seats"] = [_seat_from_answers(item, index) for index, item in enumerate(_seat_answers(answers), start=1)]
     return config
 
@@ -143,6 +150,7 @@ def configure_interactive(stdin: TextIO = sys.stdin, stdout: TextIO = sys.stdout
             _ask_profile_assignments(stdout, stdin, seats, catalogs)
     answers["seats"] = seats
     answers["objective"] = _ask(stdout, stdin, "Objective/topic", defaults["objective"])
+    answers["deliverable_profile_id"] = _ask_deliverable_profile(stdout, stdin)
     answers["brainstorming_mode"] = _ask_brainstorming_mode(stdout, stdin)
     answers["source_dirs"] = _ask_list(stdout, stdin, "Input/source dirs", defaults["input"]["source_dirs"])
     return configure_from_answers(answers)
@@ -155,6 +163,7 @@ def _write_setup_sequence(stdout: TextIO) -> None:
         "- provider login/auth check\n"
         "- agent profile or default for each seat\n"
         "- topic/objective\n"
+        "- deliverable profile / final artifact target\n"
         "- brainstorming mode\n"
         "- input data path or input pack\n\n"
     )
@@ -359,6 +368,18 @@ def _ask_brainstorming_mode(stdout: TextIO, stdin: TextIO) -> str:
     return _brainstorming_mode_value(_ask(stdout, stdin, "Brainstorming mode", "none"), "none")
 
 
+def _ask_deliverable_profile(stdout: TextIO, stdin: TextIO) -> str:
+    _write_deliverable_profile_options(stdout)
+    return _ask(stdout, stdin, "Deliverable profile", "development_contract")
+
+
+def _write_deliverable_profile_options(stdout: TextIO) -> None:
+    stdout.write("Deliverable profile options:\n")
+    for profile in deliverable_profile_catalog():
+        stdout.write(f"- {profile['id']}: {profile['description']}\n")
+    stdout.write("- custom: provide deliverable_profile in answers JSON for custom sections/artifacts\n")
+
+
 def _default_provider_family(default: dict[str, Any]) -> str:
     transport = str(default.get("transport") or "")
     provider = str(default.get("provider") or "")
@@ -458,6 +479,16 @@ def _rounds_from_answers(answers: dict[str, Any]) -> list[dict[str, str]]:
         mode = _mode_for_index(index, count)
         rounds.append({"round_id": f"R{index}", "mode": mode, "title": ROUND_TITLE_BY_MODE.get(mode, f"Round {index}")})
     return rounds
+
+
+def _deliverable_profile_from_answers(answers: dict[str, Any]) -> dict[str, Any]:
+    if "deliverable_profile" in answers:
+        return normalize_deliverable_profile(answers.get("deliverable_profile"))
+    if "deliverable_profile_id" in answers:
+        return normalize_deliverable_profile(answers.get("deliverable_profile_id"))
+    if "output_profile" in answers:
+        return normalize_deliverable_profile(answers.get("output_profile"))
+    return builtin_deliverable_profile("development_contract")
 
 
 def _mode_for_index(index: int, count: int) -> str:

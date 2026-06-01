@@ -12,6 +12,12 @@ from .artifacts import (
 )
 from .agent_profiles import DEFAULT_AGENT_PROFILE_PRESET, apply_agent_profiles_to_seats, validate_agent_profile_config
 from .provider_adapters import SUPPORTED_REASONING_EFFORTS, validate_adapter_seat
+from .profiles import (
+    annotate_rounds_with_deliverable_profile,
+    builtin_deliverable_profile,
+    config_deliverable_profile,
+    validate_deliverable_profile,
+)
 
 
 PUBLIC_CONFIG_SCHEMA = "providers-discuss.public-config.v1"
@@ -53,6 +59,7 @@ def example_public_config() -> dict[str, Any]:
             "write_prompt_delta_after_each_round": True,
             "claim_gate_required": True,
         },
+        "deliverable_profile": builtin_deliverable_profile("development_contract"),
         "agent_profile_defaults": {
             "enabled": False,
             "preset": DEFAULT_AGENT_PROFILE_PRESET,
@@ -141,6 +148,13 @@ def validate_public_config(data: dict[str, Any], *, config_path: Path | None = N
     if isinstance(seats, list):
         _validate_seats(seats, checks, blockers)
 
+    try:
+        deliverable_profile = config_deliverable_profile(data)
+        for blocker in validate_deliverable_profile(deliverable_profile):
+            _check(checks, blockers, blocker["check"], False, blocker["reason"])
+    except ValueError as exc:
+        _check(checks, blockers, "deliverable_profile", False, str(exc))
+
     for blocker in validate_agent_profile_config(data, config_path=config_path):
         _check(checks, blockers, blocker["check"], False, blocker["reason"])
 
@@ -163,7 +177,7 @@ def rounds_from_public_config(data: dict[str, Any]) -> list[dict[str, str]]:
                 "title": str(item.get("title") or item["round_id"]),
             }
         )
-    return rounds
+    return annotate_rounds_with_deliverable_profile(rounds, config_deliverable_profile(data))
 
 
 def provider_seats_from_public_config(

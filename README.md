@@ -86,8 +86,11 @@ A user-facing setup flow should happen in this order:
 3. Run provider login/auth preflight.
 4. Choose an agent profile for each seat, or use `default`.
 5. Write the topic/objective.
-6. Choose brainstorming mode: `none`, `light`, or `deep`.
-7. Provide input data paths or an existing input pack.
+6. Choose a deliverable profile, such as `development_contract`,
+   `readme_or_docs`, `research_synthesis`, `decision_memo`,
+   `implementation_plan`, or a custom profile.
+7. Choose brainstorming mode: `none`, `light`, or `deep`.
+8. Provide input data paths or an existing input pack.
 
 Round count can be any positive integer from 1 to N. The default is 3, but it
 is not a limit.
@@ -142,6 +145,22 @@ step until the selected round count is finished or a real blocker appears. For
 a 3-round config, the runner dispatches R1, gates R1, writes the R2 prompt
 delta, dispatches R2, gates R2, writes the R3 prompt delta, dispatches R3,
 gates R3 as terminal, writes `result.json`, and finalizes.
+
+If the config uses a deliverable profile, late-round prompts converge toward
+that profile. A final provider answer can emit a runner-owned artifact block:
+
+```markdown
+<!-- KDH_FINAL_ARTIFACT path="final/development-contract.md" profile="development_contract" -->
+# Development Contract
+
+...
+<!-- /KDH_FINAL_ARTIFACT -->
+```
+
+The terminal gate extracts the block into the run root, checks required
+sections, and records a deliverable gate. `finalize` refreshes `result.json`
+from current final artifacts so stale metadata does not survive a final file
+patch.
 
 ## Input Packs And Run-State Paths
 
@@ -303,6 +322,7 @@ Important run artifacts:
 - `claims/round-Rn-claim-map.json`
 - `gates/round-Rn-gate.md`
 - `orchestrator/round-Rn-review.md`
+- `final/*`
 - `result.json`
 - `verify.json`
 
@@ -328,7 +348,7 @@ bin/providers-discuss verify-proof "$RUN_ID" --root "$ROOT" --kind team-agents -
 - A live round stops early: inspect `raw-output-manifest.md`,
   `logs/round-Rn/*.status.json`, and `verify.json`.
 - `gate` returns `return_to_round`: add or fix the claim map, provider answer,
-  or support evidence.
+  support evidence, or deliverable profile sections.
 - `verify` fails: inspect `verify.json`; the blocker names the missing artifact
   or failed provider status.
 

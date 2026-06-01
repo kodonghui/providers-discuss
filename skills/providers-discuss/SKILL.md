@@ -42,6 +42,7 @@ proof files, gates, hashes, and orchestrator prompt deltas under a run root.
   `- provider login/auth check`
   `- agent profile or default for each seat`
   `- topic/objective`
+  `- deliverable profile / final artifact target`
   `- brainstorming mode`
   `- input data path or input pack`
 - At the run-shape gate, say that any positive round count from 1 to N is
@@ -133,6 +134,13 @@ proof files, gates, hashes, and orchestrator prompt deltas under a run root.
   wants no brainstorming, light brainstorming, or deep brainstorming before
   provider rounds. If enabled, keep it as a visible stage in the config or
   run notes.
+- After the topic/objective, ask for a deliverable profile. Built-ins are
+  `discussion_summary`, `development_contract`, `readme_or_docs`,
+  `research_synthesis`, `decision_memo`, and `implementation_plan`; custom
+  profiles must define required sections and run-root final artifact paths.
+  Profile-backed final answers should emit a `KDH_FINAL_ARTIFACT` block so the
+  runner can extract, gate, hash, and refresh `result.json` from the actual
+  artifact.
 - Prefer a config-first workflow: `providers-discuss validate-config`, then
   `providers-discuss init --config`.
 - Use `configure` only when the user wants an interactive or answers-JSON setup
@@ -140,7 +148,7 @@ proof files, gates, hashes, and orchestrator prompt deltas under a run root.
 - Use `advance` as the default resume/continue command after init/preflight or
   after a gate. It should move through every legal runner-owned step until the
   run finishes or hits a real blocker such as missing provider answers, missing
-  claim map, unsupported live dispatch, or missing `result.json`.
+  claim map, unsupported live dispatch, or a failed deliverable gate.
 - Run `auth-preflight` before live provider work. It reports readiness and login
   hints, but must not capture OAuth tokens, cookies, provider-home raw config,
   browser state, or shell history.

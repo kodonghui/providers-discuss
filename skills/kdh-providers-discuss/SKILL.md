@@ -15,7 +15,7 @@ This is the canonical Codex skill for the `providers-discuss` CLI.
   Chinese, Japanese, and Spanish, then continue in the selected language.
 - Immediately after language selection, show the remaining setup sequence as
   structured bullets: run-shape gate, auth check, agent profile/default, topic,
-  brainstorming, and input data path or input pack.
+  deliverable profile, brainstorming, and input data path or input pack.
 - At the run-shape gate, explain that 1 to N rounds are possible. The default
   of 3 is not a limit. Collect round count, seat count, provider type, model,
   and reasoning effort in that same gate.
@@ -81,6 +81,11 @@ This is the canonical Codex skill for the `providers-discuss` CLI.
   preset.
 - Ask explicitly whether the user wants no brainstorming, light brainstorming,
   or deep brainstorming before provider rounds.
+- After the topic/objective, ask for a deliverable profile: `discussion_summary`,
+  `development_contract`, `readme_or_docs`, `research_synthesis`,
+  `decision_memo`, `implementation_plan`, or a custom profile. Explain that
+  profile-backed terminal rounds must produce a `KDH_FINAL_ARTIFACT` block and
+  that `finalize` refreshes `result.json` from actual final artifacts.
 - Prefer config-first runs with `providers-discuss validate-config`, then
   `providers-discuss init --config`.
 - Run `providers-discuss auth-preflight` before live provider work.

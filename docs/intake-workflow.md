@@ -52,8 +52,9 @@ The skill should ask one question at a time in this order:
 3. Login/auth preflight for the selected providers.
 4. Agent profile per selected seat, or `default`.
 5. Topic/objective.
-6. Brainstorming mode.
-7. Input data path.
+6. Deliverable profile / final artifact target.
+7. Brainstorming mode.
+8. Input data path.
 
 Immediately after the language choice, show the remaining setup sequence before
 asking for round count:
@@ -64,6 +65,7 @@ providers-discuss setup will continue in this order:
 - provider login/auth check
 - agent profile or default for each seat
 - topic/objective
+- deliverable profile / final artifact target
 - brainstorming mode
 - input data path or input pack
 ```
@@ -78,6 +80,29 @@ not a limit.
 The same gate must collect seat count plus provider/model/effort choices for
 each seat. Do not split these into unrelated gates; users need to see the whole
 run shape before auth and profile selection.
+
+## Deliverable Profile Prompt
+
+After the topic/objective, ask what final artifact shape the discussion should
+converge on. Present built-in profiles as structured bullets:
+
+```text
+Deliverable profile options:
+- discussion_summary: legacy discussion behavior without a required final artifact.
+- development_contract: requirements, functional spec, non-goals, architecture,
+  artifact/state contract, data/file layout, CLI surface, verification plan,
+  acceptance criteria, open questions, and final recommendation.
+- readme_or_docs: README or documentation artifact.
+- research_synthesis: research report with evidence and provider positions.
+- decision_memo: one decision with accepted, rejected, and deferred items.
+- implementation_plan: implementation milestones and verification plan.
+- custom: user-supplied required sections and final artifact paths.
+```
+
+When the profile has final artifacts, later rounds must ask providers to
+converge toward those required sections. The final answer should include a
+`KDH_FINAL_ARTIFACT` block so the runner can extract, gate, and hash the
+artifact before finalizing.
 
 ## Language Prompt
 
