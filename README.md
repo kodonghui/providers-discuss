@@ -15,7 +15,7 @@
 
 ## Background
 
-On **June 15, 2026**, Anthropic moves Claude Agent SDK and `claude -p` usage to a separate monthly credit allocation. Scripts that silently called `claude -p` as an answer-capture path need to be replaced. `providers-discuss` is that replacement — a runner that owns the full artifact contract instead of hiding behind a single provider CLI.
+On **June 15, 2026**, Anthropic separates Claude Agent SDK and `claude -p` usage into a distinct execution path. Scripts that silently called `claude -p` as an answer-capture path need to be replaced. `providers-discuss` is that replacement — a runner that owns the full artifact contract instead of hiding behind a single provider CLI.
 
 ---
 
@@ -81,7 +81,7 @@ CONFIG=providers-discuss.config.json
 # 2. Validate your config
 bin/providers-discuss validate-config "$CONFIG"
 
-# 3. Check provider auth before spending credits
+# 3. Check provider auth before live dispatch
 bin/providers-discuss auth-preflight "$CONFIG" --report-dir "$PWD/auth-report"
 
 # 4. Initialize the run state directory
@@ -206,7 +206,7 @@ The terminal gate extracts the block, checks required sections, hashes the artif
 
 ## Auth Preflight
 
-Run `auth-preflight` before every live dispatch to catch credential issues before spending tokens.
+Run `auth-preflight` before every live dispatch to catch credential issues early.
 
 ```bash
 bin/providers-discuss auth-preflight providers-discuss.config.json --report-dir ./auth-report
@@ -275,7 +275,7 @@ No open-source license has been selected yet. Until a `LICENSE` file is added, t
 
 ## 배경
 
-**2026년 6월 15일**, Anthropic은 Claude Agent SDK 및 `claude -p` 사용을 별도의 월간 크레딧 경로로 전환합니다. `claude -p`를 암묵적으로 호출하던 스크립트를 대체할 도구가 필요합니다. `providers-discuss`는 단일 프로바이더 CLI에 의존하는 대신 전체 아티팩트 계약을 직접 소유하는 러너입니다.
+**2026년 6월 15일**, Anthropic은 Claude Agent SDK 및 `claude -p` 사용을 별도의 실행 경로로 분리합니다. `claude -p`를 암묵적으로 호출하던 스크립트를 대체할 도구가 필요합니다. `providers-discuss`는 단일 프로바이더 CLI에 의존하는 대신 전체 아티팩트 계약을 직접 소유하는 러너입니다.
 
 ---
 
@@ -341,7 +341,7 @@ CONFIG=providers-discuss.config.json
 # 2. 설정 파일 유효성 검사
 bin/providers-discuss validate-config "$CONFIG"
 
-# 3. 크레딧 소모 전 프로바이더 인증 확인
+# 3. 라이브 디스패치 전 프로바이더 인증 확인
 bin/providers-discuss auth-preflight "$CONFIG" --report-dir "$PWD/auth-report"
 
 # 4. 실행 상태 디렉터리 초기화
@@ -522,7 +522,7 @@ bin/providers-discuss model-refresh --config providers-discuss.config.json
 
 ## 背景
 
-**2026年6月15日**，Anthropic 将 Claude Agent SDK 和 `claude -p` 的使用迁移到单独的每月积分路径。静默调用 `claude -p` 的脚本需要被替换。`providers-discuss` 就是这个替代方案——一个直接拥有完整制品契约的运行器，而非依赖单一提供商 CLI。
+**2026年6月15日**，Anthropic 将 Claude Agent SDK 和 `claude -p` 的使用分离为独立的执行路径。静默调用 `claude -p` 的脚本需要被替换。`providers-discuss` 就是这个替代方案——一个直接拥有完整制品契约的运行器，而非依赖单一提供商 CLI。
 
 ---
 
@@ -588,7 +588,7 @@ CONFIG=providers-discuss.config.json
 # 2. 验证配置文件
 bin/providers-discuss validate-config "$CONFIG"
 
-# 3. 在消耗积分前检查提供商认证
+# 3. 在实时调度前检查提供商认证
 bin/providers-discuss auth-preflight "$CONFIG" --report-dir "$PWD/auth-report"
 
 # 4. 初始化运行状态目录
@@ -747,7 +747,7 @@ bin/providers-discuss auth-preflight providers-discuss.config.json --report-dir 
 
 ## 背景
 
-**2026年6月15日**、Anthropic は Claude Agent SDK および `claude -p` の使用を別の月次クレジットパスに移行します。`claude -p` を暗黙的に呼び出すスクリプトは置き換える必要があります。`providers-discuss` はその置き換えです——単一のプロバイダー CLI に依存するのではなく、完全なアーティファクト契約を直接所有するランナーです。
+**2026年6月15日**、Anthropic は Claude Agent SDK および `claude -p` の使用を別の実行パスに分離します。`claude -p` を暗黙的に呼び出すスクリプトは置き換える必要があります。`providers-discuss` はその置き換えです——単一のプロバイダー CLI に依存するのではなく、完全なアーティファクト契約を直接所有するランナーです。
 
 ---
 
@@ -813,7 +813,7 @@ CONFIG=providers-discuss.config.json
 # 2. 設定ファイルの検証
 bin/providers-discuss validate-config "$CONFIG"
 
-# 3. クレジット消費前にプロバイダー認証を確認
+# 3. ライブディスパッチ前にプロバイダー認証を確認
 bin/providers-discuss auth-preflight "$CONFIG" --report-dir "$PWD/auth-report"
 
 # 4. 実行状態ディレクトリの初期化
@@ -973,7 +973,7 @@ bin/providers-discuss auth-preflight providers-discuss.config.json --report-dir 
 
 ## Contexto
 
-El **15 de junio de 2026**, Anthropic migra el uso del Claude Agent SDK y `claude -p` a una ruta de crédito mensual separada. Los scripts que llamaban silenciosamente a `claude -p` necesitan ser reemplazados. `providers-discuss` es ese reemplazo: un ejecutor que posee el contrato de artefactos completo en lugar de depender de un único CLI de proveedor.
+El **15 de junio de 2026**, Anthropic separa el uso del Claude Agent SDK y `claude -p` en una ruta de ejecución independiente. Los scripts que llamaban silenciosamente a `claude -p` necesitan ser reemplazados. `providers-discuss` es ese reemplazo: un ejecutor que posee el contrato de artefactos completo en lugar de depender de un único CLI de proveedor.
 
 ---
 
@@ -1039,7 +1039,7 @@ CONFIG=providers-discuss.config.json
 # 2. Validar el archivo de configuración
 bin/providers-discuss validate-config "$CONFIG"
 
-# 3. Verificar autenticación de proveedores antes de gastar créditos
+# 3. Verificar autenticación de proveedores antes del despacho en vivo
 bin/providers-discuss auth-preflight "$CONFIG" --report-dir "$PWD/auth-report"
 
 # 4. Inicializar el directorio de estado de ejecución
