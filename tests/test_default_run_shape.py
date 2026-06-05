@@ -3,7 +3,7 @@ from __future__ import annotations
 import io
 import unittest
 
-from providers_discuss.configure import _write_setup_sequence, configure_from_answers
+from providers_discuss.configure import _model_effort_format_example, _write_setup_sequence, configure_from_answers
 from providers_discuss.public_config import example_public_config, validate_public_config
 
 
@@ -81,10 +81,23 @@ class DefaultRunShapeTests(unittest.TestCase):
         self.assertIn("gpt-5.5", text)
         self.assertIn("xhigh", text)
         self.assertIn("Claude Team Agents", text)
+        self.assertIn("opus4.8", text)
+        self.assertIn("opus4-8", text)
         self.assertIn("claude-opus-4-8", text)
         self.assertIn("max", text)
         self.assertIn("Ideation Catalyst", text)
         self.assertNotIn("teammate guidance", text)
+        self.assertNotIn("4-8 teammates", text)
+
+    def test_claude_team_agents_refresh_example_describes_roles_not_teammate_defaults(self) -> None:
+        # Given: the configure UX prints refreshed model/effort examples for Claude Team Agents.
+        text = _model_effort_format_example("claude team agents")
+
+        # Then: Opus 4.8 remains a model default and role guidance stays separate.
+        self.assertIn("Claude Opus 4.8", text)
+        self.assertIn("Team Agents role: Ideation Catalyst", text)
+        self.assertNotIn("teammate roles", text)
+        self.assertNotIn("4-8 teammates", text)
 
     def test_configure_cli_handlers_live_in_configure_cli_module(self) -> None:
         # Given: configure/config-template/validate-config are a cohesive CLI slice.

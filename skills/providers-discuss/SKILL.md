@@ -94,7 +94,7 @@ proof files, gates, hashes, and orchestrator prompt deltas under a run root.
   `- Good for architecture review, long-context reasoning, and design critique.`
   `[claude team agents]`
   `- One Claude Code seat that uses Claude Team Agents internally.`
-  `- Claude coordinates its own teammates, they discuss the topic, and the Claude lead returns one final conclusion.`
+  `- Claude coordinates an internal Team Agents role set and returns one final conclusion.`
   `[gemini]`
   `- One Gemini CLI seat.`
   `- Good for another independent provider perspective once installed and logged in.`

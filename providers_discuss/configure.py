@@ -169,7 +169,7 @@ def _write_setup_sequence(stdout: TextIO) -> None:
         "- brainstorming mode\n"
         "- input data path or input pack\n\n"
         "Default run shape:\n"
-        "- 2 seats: GPT/Codex gpt-5.5 with xhigh effort, plus Claude Team Agents claude-opus-4-8 with max effort.\n"
+        "- 2 seats: GPT/Codex gpt-5.5 with xhigh effort, plus Claude Team Agents model shorthand opus4.8 / opus4-8 stored as claude-opus-4-8 with max effort.\n"
         "- Claude Team Agents includes Ideation Catalyst by default.\n\n"
     )
 
@@ -227,7 +227,7 @@ def _ask_run_shape_gate(stdout: TextIO, stdin: TextIO, defaults: dict[str, Any])
                 "required_direct_message_count": _ask_int(
                     stdout,
                     stdin,
-                    "Required direct teammate messages",
+                    "Required Team Agents direct messages",
                     int(team_default.get("required_direct_message_count", DEFAULT_TEAM_AGENTS_DIRECT_MESSAGE_COUNT)),
                 ),
             }
@@ -246,7 +246,7 @@ def _write_provider_options(stdout: TextIO) -> None:
         "- Good for architecture review, long-context reasoning, and design critique.\n\n"
         "[claude team agents]\n"
         "- One Claude Code seat that uses Claude Team Agents internally.\n"
-        "- Claude coordinates its own teammates, they discuss the topic, and the Claude lead returns one final conclusion.\n\n"
+        "- Claude coordinates an internal Team Agents role set and returns one final conclusion.\n\n"
         "[gemini]\n"
         "- One Gemini CLI seat.\n"
         "- Good for another independent provider perspective once installed and logged in.\n\n"
@@ -320,12 +320,12 @@ def _model_effort_format_example(family: str) -> str:
     if family == "claude team agents":
         return (
             "[claude team agents]\n"
-            "- model: <latest Claude Code Opus alias or explicit refreshed Claude model>\n"
+            "- model: <Claude Opus 4.8 model shorthand opus4.8 / opus4-8, stored as claude-opus-4-8 when that CLI model string is available>\n"
             "- effort: <highest available Claude effort, normally max when supported>\n"
-            "- teammate roles: Ideation Catalyst\n"
-            "- teammate roles: Research Synthesizer\n"
-            "- teammate roles: System Architect\n"
-            "- teammate roles: QA Verifier\n\n"
+            "- Team Agents role: Ideation Catalyst\n"
+            "- Team Agents role: Research Synthesizer\n"
+            "- Team Agents role: System Architect\n"
+            "- Team Agents role: QA Verifier\n\n"
         )
     if family == "gemini":
         return (

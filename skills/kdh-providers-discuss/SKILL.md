@@ -27,7 +27,7 @@ This is the canonical Codex skill for the `providers-discuss` CLI.
   `- One normal Claude Code seat.`
   `[claude team agents]`
   `- One Claude Code seat that uses Claude Team Agents internally, so Claude's
-  teammates discuss the topic and the Claude lead returns one final conclusion.`
+  Team Agents role set discusses the topic and the Claude lead returns one final conclusion.`
   `[gemini]`
   `- One Gemini CLI seat.`
   Do not mention manual import in provider/model/effort choice screens. Manual
