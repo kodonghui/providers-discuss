@@ -28,10 +28,10 @@
     {
       "execution": {
         "effort": "max",
-        "model": "opus",
+        "model": "claude-opus-4-8",
         "permission_mode": "auto"
       },
-      "model": "opus",
+      "model": "claude-opus-4-8",
       "provider": "anthropic",
       "reasoning_effort": "max",
       "required": true,
@@ -41,6 +41,7 @@
         "enabled": true,
         "required_direct_message_count": 6,
         "roles": [
+          "Ideation Catalyst",
           "source-reader",
           "skeptic",
           "recorder"

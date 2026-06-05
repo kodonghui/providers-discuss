@@ -24,6 +24,10 @@ from .profiles import (
     config_deliverable_profile,
     validate_deliverable_profile,
 )
+from .team_agents_defaults import (
+    DEFAULT_TEAM_AGENT_ROLES,
+    DEFAULT_TEAM_AGENTS_REQUIRED_ROLE,
+)
 
 
 PUBLIC_CONFIG_SCHEMA = "providers-discuss.public-config.v1"
@@ -115,7 +119,7 @@ def example_public_config() -> dict[str, Any]:
                 },
                 "team_agents": {
                     "enabled": True,
-                    "roles": ["Ideation Catalyst", "Research Synthesizer", "System Architect", "QA Verifier"],
+                    "roles": list(DEFAULT_TEAM_AGENT_ROLES),
                     "required_direct_message_count": DEFAULT_TEAM_AGENTS_DIRECT_MESSAGE_COUNT,
                 },
             },
@@ -261,6 +265,14 @@ def _validate_seats(seats: list[Any], checks: list[dict[str, Any]], blockers: li
             _check(checks, blockers, f"seat_{index}_team_agents_enabled", team_agents.get("enabled") is True, "team_agents.enabled must be true")
             valid_roles = isinstance(roles, list) and len(roles) >= 2 and all(isinstance(role, (str, dict)) for role in roles)
             _check(checks, blockers, f"seat_{index}_team_roles", valid_roles, "Team Agents roles must contain at least two string or object roles")
+            role_names = [_role_name(role) for role in roles] if isinstance(roles, list) else []
+            _check(
+                checks,
+                blockers,
+                f"seat_{index}_team_agents_ideation_role",
+                DEFAULT_TEAM_AGENTS_REQUIRED_ROLE in role_names,
+                f"Team Agents must include {DEFAULT_TEAM_AGENTS_REQUIRED_ROLE}",
+            )
     duplicates = sorted({item for item in ids if ids.count(item) > 1 and item})
     _check(checks, blockers, "seat_ids_unique", not duplicates, f"duplicate seat ids: {duplicates}")
     _check(checks, blockers, "enabled_required_seat_present", enabled_required_count > 0, "at least one enabled required seat is needed")
@@ -286,12 +298,7 @@ def _normalize_seat(seat: dict[str, Any]) -> dict[str, Any]:
         normalized["execution"] = execution
     if normalized.get("transport") == "claude_k_team_agents":
         team_agents = dict(normalized.get("team_agents") or {})
-        roles = team_agents.get("roles") or team_agents.get("required_teammates") or [
-            "Ideation Catalyst",
-            "Research Synthesizer",
-            "System Architect",
-            "QA Verifier",
-        ]
+        roles = team_agents.get("roles") or team_agents.get("required_teammates") or list(DEFAULT_TEAM_AGENT_ROLES)
         team_agents["enabled"] = True
         team_agents["roles"] = list(roles)
         team_agents["required_teammates"] = [_role_name(role) for role in roles]

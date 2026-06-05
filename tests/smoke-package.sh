@@ -40,6 +40,12 @@ grep -q "deliverable profile" "${pkg}/skills/kdh-providers-discuss/SKILL.md"
 grep -q "Do not call provider CLIs directly" "${pkg}/skills/providers-discuss/SKILL.md"
 grep -q "hardcode a specific Gemini version" "${pkg}/skills/providers-discuss/SKILL.md"
 grep -q "KDH_FINAL_ARTIFACT" "${pkg}/README.md"
+grep -q "Default Run Shape" "${pkg}/README.md"
+grep -q "gpt-5.5" "${pkg}/README.md"
+grep -q "xhigh" "${pkg}/README.md"
+grep -q "claude-opus-4-8" "${pkg}/README.md"
+grep -q "Ideation Catalyst" "${pkg}/README.md"
+grep -q "기본 실행 형태" "${pkg}/README.md"
 
 "${pkg}/install.sh" --prefix "${install_home}/.local" --codex-home "${install_home}/.codex" --uninstall >/dev/null
 test ! -e "${install_home}/.local/bin/providers-discuss"
@@ -49,6 +55,29 @@ test ! -e "${install_home}/.codex/skills/kdh-providers-discuss"
 for config in "${pkg}"/examples/*.config.json; do
   "${cmd}" validate-config "${config}" --json >/dev/null
 done
+
+"${cmd}" config-template --output "${tmp}/default-template.json" >/dev/null
+python3 - "${tmp}/default-template.json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+config = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+seats = [seat for seat in config["seats"] if seat.get("enabled", True) is not False]
+assert [seat["seat_id"] for seat in seats] == ["gpt", "claude_team"]
+assert seats[0]["provider"] == "openai"
+assert seats[0]["transport"] == "codex_exec_file"
+assert seats[0]["model"] == "gpt-5.5"
+assert seats[0]["reasoning_effort"] == "xhigh"
+assert seats[1]["provider"] == "anthropic"
+assert seats[1]["transport"] == "claude_k_team_agents"
+assert seats[1]["model"] == "claude-opus-4-8"
+assert seats[1]["reasoning_effort"] == "max"
+assert seats[1]["execution"]["permission_mode"] == "auto"
+team_agents = seats[1]["team_agents"]
+assert "team_agent_count" not in team_agents
+assert "Ideation Catalyst" in team_agents["roles"]
+PY
 
 cat > "${tmp}/configure-answers.json" <<'EOF'
 {
@@ -175,8 +204,8 @@ status.write_text(
             "verdict": "admitted",
             "timed_out": False,
             "team_create_used": True,
-            "task_create_count": 3,
-            "agent_calls_with_team_name": 3,
+            "task_create_count": 4,
+            "agent_calls_with_team_name": 4,
             "direct_teammate_messages_required": 6,
             "direct_teammate_messages_observed": 6,
             "ordinary_agent_delegation_only": False,
@@ -194,9 +223,11 @@ project = home / ".claude" / "projects"
 project.mkdir(parents=True, exist_ok=True)
 events = [
     ("TeamCreate", {"team_name": team_name}),
+    ("TaskCreate", {"team_name": team_name, "task": "ideation-catalyst"}),
     ("TaskCreate", {"team_name": team_name, "task": "readme-writer"}),
     ("TaskCreate", {"team_name": team_name, "task": "maturity-auditor"}),
     ("TaskCreate", {"team_name": team_name, "task": "boundary-reviewer"}),
+    ("Agent", {"team_name": team_name, "role": "ideation-catalyst"}),
     ("Agent", {"team_name": team_name, "role": "readme-writer"}),
     ("Agent", {"team_name": team_name, "role": "maturity-auditor"}),
     ("Agent", {"team_name": team_name, "role": "boundary-reviewer"}),
@@ -312,6 +343,7 @@ cat > "${tmp}/mixed-live.config.json" <<'EOF'
         "enabled": true,
         "required_direct_message_count": 6,
         "roles": [
+          {"name": "Ideation Catalyst"},
           {"name": "readme-writer"},
           {"name": "maturity-auditor"},
           {"name": "boundary-reviewer"}
@@ -376,6 +408,7 @@ cat > "${tmp}/full-live.config.json" <<'EOF'
         "enabled": true,
         "required_direct_message_count": 6,
         "roles": [
+          {"name": "Ideation Catalyst"},
           {"name": "readme-writer"},
           {"name": "maturity-auditor"},
           {"name": "boundary-reviewer"}
@@ -421,6 +454,7 @@ cat > "${tmp}/claude-shape.config.json" <<'EOF'
         "enabled": true,
         "required_direct_message_count": 6,
         "roles": [
+          {"name": "Ideation Catalyst"},
           {"name": "readme-writer"},
           {"name": "maturity-auditor"},
           {"name": "boundary-reviewer"}
@@ -734,12 +768,12 @@ assert proof["runtime"]["model"]["effective"] == "sonnet"
 assert proof["runtime"]["effort"]["effective"] == "medium"
 assert proof["runtime"]["timeout_seconds"]["effective"] == 5
 assert proof["runtime"]["timeout_seconds"]["overridden"] is False
-assert proof["required_teammates"] == ["readme-writer", "maturity-auditor", "boundary-reviewer"]
+assert proof["required_teammates"] == ["Ideation Catalyst", "readme-writer", "maturity-auditor", "boundary-reviewer"]
 prompt = (run / "prompts" / "round-R1" / "claude_team_shape.live-team-agents-smoke.md").read_text(encoding="utf-8")
-assert "readme-writer, maturity-auditor, and boundary-reviewer" in prompt
+assert "Ideation Catalyst, readme-writer, maturity-auditor, and boundary-reviewer" in prompt
 assert "source-reader, skeptic, and recorder" not in prompt
-assert '"task_create_count": 3' in prompt
-assert '"agent_calls_with_team_name": 3' in prompt
+assert '"task_create_count": 4' in prompt
+assert '"agent_calls_with_team_name": 4' in prompt
 PY
 if HOME="${tmp}/fake-claude-home-override" "${cmd}" smoke-claude-team-agents "${claude_shape_run}" \
   --root "${work}/runs" \

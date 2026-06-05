@@ -7,10 +7,12 @@ from io import StringIO
 from pathlib import Path
 from typing import Any, TextIO
 
+from .team_agents_defaults import DEFAULT_TEAM_AGENT_ROLES
+
 
 HOOK_EVENTS = {"UserPromptSubmit", "TaskCreated", "TeammateIdle", "TaskCompleted"}
 DEFAULT_TRIGGER_REGEX = r"(?i)(kdh|providers-discuss|wiki|architecture|strategy|debate|review|trade-?off|설계|아키텍처|전략|논의|토론|검토)"
-DEFAULT_ROLES = ("Ideation Catalyst", "Research Synthesizer", "System Architect", "QA Verifier")
+DEFAULT_ROLES = DEFAULT_TEAM_AGENT_ROLES
 STATUS_SCHEMA = "kdh.providers-discuss.claude-team-agents-status.v1"
 
 

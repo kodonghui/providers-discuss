@@ -14,6 +14,7 @@ from .profiles import (
     normalize_deliverable_profile,
 )
 from .public_config import example_public_config, validate_public_config
+from .team_agents_defaults import DEFAULT_TEAM_AGENT_ROLES
 
 
 CONFIGURE_SCHEMA = "providers-discuss.configure.v1"
@@ -21,7 +22,6 @@ CONFIGURE_SCHEMA = "providers-discuss.configure.v1"
 SUPPORTED_INTAKE_LANGUAGES = ("English", "Korean", "Chinese", "Japanese", "Spanish")
 SUPPORTED_BRAINSTORMING_MODES = ("none", "light", "deep")
 INTAKE_PROVIDER_FAMILIES = ("gpt/codex", "claude", "claude team agents", "gemini")
-DEFAULT_TEAM_AGENT_ROLES = ["Ideation Catalyst", "Research Synthesizer", "System Architect", "QA Verifier"]
 
 OFFICIAL_MODEL_SOURCES_BY_FAMILY = {
     "gpt/codex": [
@@ -67,7 +67,7 @@ DEFAULT_PROVIDER_TRANSPORT = {
 
 DEFAULT_PROVIDER_MODEL = {
     "openai": "gpt-5.5",
-    "anthropic": "opus",
+    "anthropic": "claude-opus-4-8",
     "google": "auto",
     "manual": "manual",
     "other": "custom",
@@ -168,6 +168,9 @@ def _write_setup_sequence(stdout: TextIO) -> None:
         "- deliverable profile / final artifact target\n"
         "- brainstorming mode\n"
         "- input data path or input pack\n\n"
+        "Default run shape:\n"
+        "- 2 seats: GPT/Codex gpt-5.5 with xhigh effort, plus Claude Team Agents claude-opus-4-8 with max effort.\n"
+        "- Claude Team Agents includes Ideation Catalyst by default.\n\n"
     )
 
 
@@ -220,7 +223,7 @@ def _ask_run_shape_gate(stdout: TextIO, stdin: TextIO, defaults: dict[str, Any])
             team_default = default.get("team_agents") or {}
             seat["team_agents"] = {
                 "enabled": True,
-                "roles": _ask_list(stdout, stdin, "Team Agent roles", team_default.get("roles") or DEFAULT_TEAM_AGENT_ROLES),
+                "roles": _ask_list(stdout, stdin, "Team Agent roles", team_default.get("roles") or list(DEFAULT_TEAM_AGENT_ROLES)),
                 "required_direct_message_count": _ask_int(
                     stdout,
                     stdin,
@@ -540,7 +543,7 @@ def _seat_from_answers(item: dict[str, Any], index: int) -> dict[str, Any]:
         seat["transport"] = "claude_k_team_agents"
         seat["team_agents"] = {
             "enabled": True,
-            "roles": _team_roles_value(team_agents.get("roles") or team_agents.get("required_teammates"), DEFAULT_TEAM_AGENT_ROLES),
+            "roles": _team_roles_value(team_agents.get("roles") or team_agents.get("required_teammates"), list(DEFAULT_TEAM_AGENT_ROLES)),
             "required_direct_message_count": int(team_agents.get("required_direct_message_count") or DEFAULT_TEAM_AGENTS_DIRECT_MESSAGE_COUNT),
         }
     return seat
@@ -719,7 +722,7 @@ def _ask_profile_assignments(stdout: TextIO, stdin: TextIO, seats: list[dict[str
         team_agents = seat.get("team_agents")
         if not isinstance(team_agents, dict):
             continue
-        roles = _team_roles_value(team_agents.get("roles") or team_agents.get("required_teammates"), DEFAULT_TEAM_AGENT_ROLES)
+        roles = _team_roles_value(team_agents.get("roles") or team_agents.get("required_teammates"), list(DEFAULT_TEAM_AGENT_ROLES))
         updated_roles: list[Any] = []
         for role in roles:
             if isinstance(role, dict):

@@ -88,6 +88,19 @@ bin/providers-discuss verify "$RUN_ID" --root "$ROOT"
 
 ---
 
+## Default Run Shape
+
+`config-template` and `configure` default to a 2-seat run shape so you do not need to restate the standard provider mix each time.
+
+| Seat | Provider / transport | Default model | Effort | Notes |
+|---|---|---|---|---|
+| `gpt` | `gpt/codex` / `codex_exec_file` | `gpt-5.5` | `xhigh` | Writes a runner-owned answer file and must not use a read-only sandbox |
+| `claude_team` | `claude team agents` / `claude_k_team_agents` | `claude-opus-4-8` | `max` | Uses Claude Team Agents with `Ideation Catalyst` included by default |
+
+During interactive `configure`, the setup flow shows this default before the run-shape gate. You can still change round count, seat count, provider type, model, and effort in that gate.
+
+---
+
 ## Provider Adapters
 
 | Provider | Transport | Status | Notes |
@@ -308,6 +321,19 @@ bin/providers-discuss status "$RUN_ID" --root "$ROOT"
 # 8. 아티팩트 및 증명 검증
 bin/providers-discuss verify "$RUN_ID" --root "$ROOT"
 ```
+
+---
+
+## 기본 실행 형태
+
+`config-template`와 `configure`의 기본값은 2-seat 실행 형태입니다. 그래서 표준 프로바이더 조합을 매번 다시 말하지 않아도 됩니다.
+
+| 시트 | 프로바이더 / 트랜스포트 | 기본 모델 | Effort | 비고 |
+|---|---|---|---|---|
+| `gpt` | `gpt/codex` / `codex_exec_file` | `gpt-5.5` | `xhigh` | 러너 소유 답변 파일을 쓰며 read-only sandbox를 쓰면 안 됩니다 |
+| `claude_team` | `claude team agents` / `claude_k_team_agents` | `claude-opus-4-8` | `max` | Claude Team Agents를 쓰며 `Ideation Catalyst`가 기본 포함됩니다 |
+
+대화형 `configure`에서는 run-shape gate 전에 이 기본값을 먼저 보여줍니다. 그 gate에서 라운드 수, 시트 수, 프로바이더 타입, 모델, effort는 계속 바꿀 수 있습니다.
 
 ---
 

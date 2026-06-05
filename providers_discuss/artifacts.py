@@ -10,6 +10,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Final
 
+from .team_agents_defaults import DEFAULT_TEAM_AGENT_ROLES
+
 try:
     import fcntl
 except ImportError:  # pragma: no cover - fcntl is expected on the target Linux runtime.
@@ -31,8 +33,8 @@ DEFAULT_TEAM_AGENTS_DIRECT_MESSAGE_COUNT = 6
 DEFAULT_OPENAI_CODEX_MODEL: Final = "gpt-5.5"
 DEFAULT_OPENAI_MODEL_SELECTION: Final = "latest_available_via_official_docs_or_cli_discovery"
 DEFAULT_OPENAI_REASONING_EFFORT: Final = "xhigh"
-DEFAULT_CLAUDE_CODE_MODEL: Final = "opus"
-DEFAULT_CLAUDE_MODEL_SELECTION: Final = "claude_code_latest_opus_alias"
+DEFAULT_CLAUDE_CODE_MODEL: Final = "claude-opus-4-8"
+DEFAULT_CLAUDE_MODEL_SELECTION: Final = "claude_code_full_opus_4_8_model"
 DEFAULT_CLAUDE_REASONING_EFFORT: Final = "max"
 
 ALLOWED_STATES = {
@@ -207,7 +209,7 @@ def provider_seats_for_preset(preset: str) -> dict[str, Any]:
                 },
                 "team_agents": {
                     "enabled": True,
-                    "required_teammates": ["Ideation Catalyst", "Research Synthesizer", "System Architect", "QA Verifier"],
+                    "required_teammates": list(DEFAULT_TEAM_AGENT_ROLES),
                     "required_direct_message_count": DEFAULT_TEAM_AGENTS_DIRECT_MESSAGE_COUNT,
                 },
             },

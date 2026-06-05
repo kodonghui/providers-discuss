@@ -42,7 +42,7 @@
       "transport": "manual"
     },
     {
-      "model": "opus",
+      "model": "claude-opus-4-8",
       "provider": "anthropic",
       "reasoning_effort": "max",
       "required": true,
@@ -51,7 +51,7 @@
       "team_agents": {
         "enabled": true,
         "required_direct_message_count": 6,
-        "roles": ["reader", "skeptic", "recorder"]
+        "roles": ["Ideation Catalyst", "reader", "skeptic", "recorder"]
       },
       "timeout_seconds": 2400,
       "transport": "claude_k_team_agents"
