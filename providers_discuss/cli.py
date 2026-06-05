@@ -115,7 +115,7 @@ from .public_config import (
     rounds_from_public_config,
     validate_public_config,
 )
-from .team_agents_hooks import DEFAULT_TRIGGER_REGEX, STATUS_SCHEMA as TEAM_AGENTS_STATUS_SCHEMA, handle_dispatch, handle_hook, parse_roles
+from .team_agents_hooks import DEFAULT_ROLES, DEFAULT_TRIGGER_REGEX, STATUS_SCHEMA as TEAM_AGENTS_STATUS_SCHEMA, handle_dispatch, handle_hook, parse_roles
 
 
 def default_harness_root() -> Path:
@@ -158,7 +158,7 @@ def main(argv: list[str] | None = None) -> int:
     configure.add_argument("--json", action="store_true")
 
     model_refresh = sub.add_parser("model-refresh")
-    model_refresh.add_argument("--provider", choices=["gemini"], default="gemini")
+    model_refresh.add_argument("--provider", choices=["anthropic", "gemini", "openai"], default="openai")
     model_refresh.add_argument("--timeout-seconds", type=int, default=15)
     model_refresh.add_argument("--json", action="store_true")
 
@@ -340,14 +340,14 @@ def main(argv: list[str] | None = None) -> int:
     hook.add_argument("--seat", default="claude_team")
     hook.add_argument("--trigger-mode", choices=["providers_discuss_hook", "global_hook"], default="providers_discuss_hook")
     hook.add_argument("--trigger-regex", default=DEFAULT_TRIGGER_REGEX)
-    hook.add_argument("--roles", default="source-reader,skeptic,recorder")
+    hook.add_argument("--roles", default=",".join(DEFAULT_ROLES))
 
     hook_dispatch = sub.add_parser("hook-dispatch")
     hook_dispatch.add_argument("--event", choices=["UserPromptSubmit", "TaskCreated", "TeammateIdle", "TaskCompleted"], required=True)
     hook_dispatch.add_argument("--root", type=Path, default=DEFAULT_ROOT)
     hook_dispatch.add_argument("--seat", default="claude_team")
     hook_dispatch.add_argument("--trigger-mode", choices=["providers_discuss_hook", "global_hook"], default="providers_discuss_hook")
-    hook_dispatch.add_argument("--roles", default="source-reader,skeptic,recorder")
+    hook_dispatch.add_argument("--roles", default=",".join(DEFAULT_ROLES))
 
     args = parser.parse_args(argv)
     try:
@@ -441,7 +441,7 @@ def add_hook_config_args(
     parser.add_argument("--seat", default="claude_team")
     parser.add_argument("--trigger-mode", choices=trigger_modes, default=default_trigger_mode)
     parser.add_argument("--trigger-regex", default="")
-    parser.add_argument("--roles", default="source-reader,skeptic,recorder")
+    parser.add_argument("--roles", default=",".join(DEFAULT_ROLES))
 
 
 def cmd_init(args: argparse.Namespace) -> int:
