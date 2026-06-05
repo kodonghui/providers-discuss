@@ -21,20 +21,22 @@ CONFIGURE_SCHEMA = "providers-discuss.configure.v1"
 SUPPORTED_INTAKE_LANGUAGES = ("English", "Korean", "Chinese", "Japanese", "Spanish")
 SUPPORTED_BRAINSTORMING_MODES = ("none", "light", "deep")
 INTAKE_PROVIDER_FAMILIES = ("gpt/codex", "claude", "claude team agents", "gemini")
+DEFAULT_TEAM_AGENT_ROLES = ["Ideation Catalyst", "Research Synthesizer", "System Architect", "QA Verifier"]
 
 OFFICIAL_MODEL_SOURCES_BY_FAMILY = {
     "gpt/codex": [
-        "https://platform.openai.com/docs/models",
+        "https://developers.openai.com/api/docs/models",
+        "https://developers.openai.com/api/docs/models/gpt-5.5",
         "local CLI: codex debug models, codex /model, or codex --help",
     ],
     "claude": [
-        "https://platform.claude.com/docs/en/about-claude/models/overview",
-        "https://platform.claude.com/docs/en/about-claude/models/model-ids",
+        "https://docs.anthropic.com/en/docs/claude-code/cli-usage",
+        "https://docs.anthropic.com/en/docs/claude-code/getting-started",
         "local CLI: claude --help and Claude Code model picker",
     ],
     "claude team agents": [
-        "https://platform.claude.com/docs/en/about-claude/models/overview",
-        "https://platform.claude.com/docs/en/about-claude/models/model-ids",
+        "https://docs.anthropic.com/en/docs/claude-code/cli-usage",
+        "https://docs.anthropic.com/en/docs/claude-code/getting-started",
         "local CLI: claude --help and Claude Code model picker",
     ],
     "gemini": [
@@ -72,7 +74,7 @@ DEFAULT_PROVIDER_MODEL = {
 }
 
 DEFAULT_PROVIDER_REASONING = {
-    "openai": "high",
+    "openai": "xhigh",
     "anthropic": "max",
     "google": "default",
     "manual": "manual",
@@ -218,7 +220,7 @@ def _ask_run_shape_gate(stdout: TextIO, stdin: TextIO, defaults: dict[str, Any])
             team_default = default.get("team_agents") or {}
             seat["team_agents"] = {
                 "enabled": True,
-                "roles": _ask_list(stdout, stdin, "Team Agent roles", team_default.get("roles") or ["source-reader", "skeptic", "recorder"]),
+                "roles": _ask_list(stdout, stdin, "Team Agent roles", team_default.get("roles") or DEFAULT_TEAM_AGENT_ROLES),
                 "required_direct_message_count": _ask_int(
                     stdout,
                     stdin,
@@ -246,9 +248,8 @@ def _write_provider_options(stdout: TextIO) -> None:
         "- One Gemini CLI seat.\n"
         "- Good for another independent provider perspective once installed and logged in.\n\n"
         "Examples:\n"
-        "- Example 1: gpt/codex 1, claude 1, claude team agents 1, gemini 1\n"
-        "- Example 2: gpt/codex 1, claude 1\n"
-        "- Example 3: claude team agents 1, gemini 1\n\n"
+        "- Recommended: gpt/codex 1, claude team agents 1\n"
+        "- Optional extra: add a manual seat only when a human reviewer is needed\n\n"
     )
 
 
@@ -300,12 +301,8 @@ def _model_effort_format_example(family: str) -> str:
     if family == "gpt/codex":
         return (
             "[gpt/codex]\n"
-            "- model: <refreshed GPT/Codex model 1>\n"
-            "- model: <refreshed GPT/Codex model 2>\n"
-            "- model: <refreshed GPT/Codex model 3>\n"
-            "- effort: <refreshed effort 1>\n"
-            "- effort: <refreshed effort 2>\n"
-            "- effort: <refreshed effort 3>\n\n"
+            "- model: <latest available GPT/Codex model>\n"
+            "- effort: <highest available effort, normally xhigh when supported>\n\n"
         )
     if family == "claude":
         return (
@@ -320,11 +317,12 @@ def _model_effort_format_example(family: str) -> str:
     if family == "claude team agents":
         return (
             "[claude team agents]\n"
-            "- model: <refreshed Claude model for the lead seat>\n"
-            "- effort: <refreshed Claude effort for the lead seat>\n"
-            "- teammate roles: <role 1>\n"
-            "- teammate roles: <role 2>\n"
-            "- teammate roles: <role 3>\n\n"
+            "- model: <latest Claude Code Opus alias or explicit refreshed Claude model>\n"
+            "- effort: <highest available Claude effort, normally max when supported>\n"
+            "- teammate roles: Ideation Catalyst\n"
+            "- teammate roles: Research Synthesizer\n"
+            "- teammate roles: System Architect\n"
+            "- teammate roles: QA Verifier\n\n"
         )
     if family == "gemini":
         return (
@@ -542,7 +540,7 @@ def _seat_from_answers(item: dict[str, Any], index: int) -> dict[str, Any]:
         seat["transport"] = "claude_k_team_agents"
         seat["team_agents"] = {
             "enabled": True,
-            "roles": _team_roles_value(team_agents.get("roles") or team_agents.get("required_teammates"), ["source-reader", "skeptic", "recorder"]),
+            "roles": _team_roles_value(team_agents.get("roles") or team_agents.get("required_teammates"), DEFAULT_TEAM_AGENT_ROLES),
             "required_direct_message_count": int(team_agents.get("required_direct_message_count") or DEFAULT_TEAM_AGENTS_DIRECT_MESSAGE_COUNT),
         }
     return seat
@@ -721,7 +719,7 @@ def _ask_profile_assignments(stdout: TextIO, stdin: TextIO, seats: list[dict[str
         team_agents = seat.get("team_agents")
         if not isinstance(team_agents, dict):
             continue
-        roles = _team_roles_value(team_agents.get("roles") or team_agents.get("required_teammates"), ["source-reader", "skeptic", "recorder"])
+        roles = _team_roles_value(team_agents.get("roles") or team_agents.get("required_teammates"), DEFAULT_TEAM_AGENT_ROLES)
         updated_roles: list[Any] = []
         for role in roles:
             if isinstance(role, dict):

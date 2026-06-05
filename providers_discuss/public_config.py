@@ -6,6 +6,12 @@ from pathlib import Path
 from typing import Any
 
 from .artifacts import (
+    DEFAULT_CLAUDE_CODE_MODEL,
+    DEFAULT_CLAUDE_MODEL_SELECTION,
+    DEFAULT_CLAUDE_REASONING_EFFORT,
+    DEFAULT_OPENAI_CODEX_MODEL,
+    DEFAULT_OPENAI_MODEL_SELECTION,
+    DEFAULT_OPENAI_REASONING_EFFORT,
     DEFAULT_PROVIDER_TIMEOUT_SECONDS,
     DEFAULT_TEAM_AGENTS_DIRECT_MESSAGE_COUNT,
     PROVIDER_SEATS_SCHEMA,
@@ -71,16 +77,20 @@ def example_public_config() -> dict[str, Any]:
         ],
         "seats": [
             {
-                "seat_id": "gpt_coder",
+                "seat_id": "gpt",
                 "provider": "openai",
                 "transport": "codex_exec_file",
-                "model": "gpt-5.5",
-                "reasoning_effort": "high",
-                "role": "skeptic, verifier, overengineering check",
+                "model": DEFAULT_OPENAI_CODEX_MODEL,
+                "model_selection": DEFAULT_OPENAI_MODEL_SELECTION,
+                "reasoning_effort": DEFAULT_OPENAI_REASONING_EFFORT,
+                "role": "ideation, contradiction search, verifier, overengineering check",
                 "required": True,
                 "timeout_seconds": DEFAULT_PROVIDER_TIMEOUT_SECONDS,
                 "execution": {
                     "sandbox": "workspace-write",
+                    "model": DEFAULT_OPENAI_CODEX_MODEL,
+                    "model_selection": DEFAULT_OPENAI_MODEL_SELECTION,
+                    "effort": DEFAULT_OPENAI_REASONING_EFFORT,
                     "answer_path_required": True,
                     "stdout_capture_fallback": True,
                     "completion_marker": "KDH_CODEX_DONE",
@@ -91,32 +101,23 @@ def example_public_config() -> dict[str, Any]:
                 "seat_id": "claude_team",
                 "provider": "anthropic",
                 "transport": "claude_k_team_agents",
-                "model": "opus",
-                "reasoning_effort": "max",
-                "role": "team-based source reading, critique, recorder",
+                "model": DEFAULT_CLAUDE_CODE_MODEL,
+                "model_selection": DEFAULT_CLAUDE_MODEL_SELECTION,
+                "reasoning_effort": DEFAULT_CLAUDE_REASONING_EFFORT,
+                "role": "team-based ideation, source synthesis, architecture critique, QA verification",
                 "required": True,
                 "timeout_seconds": DEFAULT_PROVIDER_TIMEOUT_SECONDS,
                 "execution": {
-                    "model": "opus",
-                    "effort": "max",
+                    "model": DEFAULT_CLAUDE_CODE_MODEL,
+                    "model_selection": DEFAULT_CLAUDE_MODEL_SELECTION,
+                    "effort": DEFAULT_CLAUDE_REASONING_EFFORT,
                     "permission_mode": "auto",
                 },
                 "team_agents": {
                     "enabled": True,
-                    "roles": ["source-reader", "skeptic", "recorder"],
+                    "roles": ["Ideation Catalyst", "Research Synthesizer", "System Architect", "QA Verifier"],
                     "required_direct_message_count": DEFAULT_TEAM_AGENTS_DIRECT_MESSAGE_COUNT,
                 },
-            },
-            {
-                "seat_id": "gemini_optional",
-                "provider": "google",
-                "transport": "gemini_cli",
-                "model": "auto",
-                "reasoning_effort": "default",
-                "role": "optional third opinion and contradiction finder",
-                "required": False,
-                "enabled": False,
-                "timeout_seconds": DEFAULT_PROVIDER_TIMEOUT_SECONDS,
             },
         ],
     }
@@ -285,7 +286,12 @@ def _normalize_seat(seat: dict[str, Any]) -> dict[str, Any]:
         normalized["execution"] = execution
     if normalized.get("transport") == "claude_k_team_agents":
         team_agents = dict(normalized.get("team_agents") or {})
-        roles = team_agents.get("roles") or team_agents.get("required_teammates") or ["source-reader", "skeptic", "recorder"]
+        roles = team_agents.get("roles") or team_agents.get("required_teammates") or [
+            "Ideation Catalyst",
+            "Research Synthesizer",
+            "System Architect",
+            "QA Verifier",
+        ]
         team_agents["enabled"] = True
         team_agents["roles"] = list(roles)
         team_agents["required_teammates"] = [_role_name(role) for role in roles]

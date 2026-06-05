@@ -1,0 +1,4 @@
+interface:
+  display_name: "KDH-providers-discuss"
+  short_description: "Run the file-backed KDH provider discussion sub-harness"
+  default_prompt: "Use $kdh-providers-discuss for provider-discussion init, preflight, rounds, gates, orchestration, and proof reports."

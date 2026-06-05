@@ -8,6 +8,14 @@ from typing import Any
 
 
 OFFICIAL_MODEL_REFRESH_SOURCES: dict[str, list[str]] = {
+    "openai": [
+        "https://developers.openai.com/api/docs/models",
+        "https://developers.openai.com/api/docs/models/gpt-5.5",
+    ],
+    "anthropic": [
+        "https://docs.anthropic.com/en/docs/claude-code/cli-usage",
+        "https://docs.anthropic.com/en/docs/claude-code/getting-started",
+    ],
     "gemini": [
         "https://ai.google.dev/gemini-api/docs/models",
         "https://ai.google.dev/api/models",
@@ -55,10 +63,15 @@ def refresh_models(*, provider: str, timeout_seconds: int = 15) -> dict[str, Any
 
 
 def extract_model_ids(*, provider: str, text: str) -> list[str]:
-    if provider != "gemini":
+    extractors = {
+        "openai": _extract_openai_model_ids,
+        "anthropic": _extract_anthropic_model_ids,
+        "gemini": _extract_gemini_model_ids,
+    }
+    extractor = extractors.get(provider)
+    if extractor is None:
         raise ValueError(f"unsupported model extraction provider: {provider}")
-    candidates = set(re.findall(r"\bgemini-(?:\d+(?:\.\d+)?|flash|pro)[a-z0-9.-]*(?:-[a-z0-9.-]+)*\b", text, flags=re.IGNORECASE))
-    return sorted(model.lower() for model in candidates if _looks_like_gemini_model_id(model))
+    return extractor(text)
 
 
 def _fetch_text(url: str, *, timeout_seconds: int) -> str:
@@ -74,6 +87,33 @@ def _fetch_text(url: str, *, timeout_seconds: int) -> str:
         return response.read().decode(charset, errors="replace")
 
 
+def _extract_openai_model_ids(text: str) -> list[str]:
+    candidates = set(re.findall(r"\bgpt-(?:\d+(?:\.\d+){0,2}|oss)[a-z0-9.-]*(?:-[a-z0-9.-]+)*\b", text, flags=re.IGNORECASE))
+    return sorted((model.lower() for model in candidates if _looks_like_openai_model_id(model)), key=lambda item: _model_sort_key("openai", item))
+
+
+def _extract_anthropic_model_ids(text: str) -> list[str]:
+    candidates = set(
+        re.findall(
+            r"\bclaude-(?:opus|sonnet|haiku)-[a-z0-9.-]*(?:-[a-z0-9.-]+)*\b",
+            text,
+            flags=re.IGNORECASE,
+        )
+    )
+    lower = text.lower()
+    if "--model" in lower or "latest model" in lower:
+        if "opus" in lower:
+            candidates.add("opus")
+        if "sonnet" in lower:
+            candidates.add("sonnet")
+    return sorted((model.lower() for model in candidates if _looks_like_anthropic_model_id(model)), key=lambda item: _model_sort_key("anthropic", item))
+
+
+def _extract_gemini_model_ids(text: str) -> list[str]:
+    candidates = set(re.findall(r"\bgemini-(?:\d+(?:\.\d+)?|flash|pro)[a-z0-9.-]*(?:-[a-z0-9.-]+)*\b", text, flags=re.IGNORECASE))
+    return sorted((model.lower() for model in candidates if _looks_like_gemini_model_id(model)), key=lambda item: _model_sort_key("gemini", item))
+
+
 def _looks_like_gemini_model_id(model: str) -> bool:
     text = model.lower()
     if text.startswith(("gemini-api", "gemini-model", "gemini-doc")):
@@ -81,7 +121,35 @@ def _looks_like_gemini_model_id(model: str) -> bool:
     return any(token in text for token in ("flash", "pro", "lite", "live", "tts", "latest", "preview", "experimental"))
 
 
+def _looks_like_openai_model_id(model: str) -> bool:
+    text = model.lower()
+    if text.startswith(("gpt-model", "gpt-doc")):
+        return False
+    if text.endswith((".jpg", ".jpeg", ".png", ".svg", ".webp")):
+        return False
+    if text == "gpt-oss":
+        return True
+    suffix = r"(?:-(?:pro|mini|nano|codex|chat|transcribe|tts|realtime|audio|search-preview|[0-9]{4}-[0-9]{2}-[0-9]{2}))*"
+    return bool(re.fullmatch(rf"gpt-\d+(?:\.\d+){{0,2}}{suffix}", text) or re.fullmatch(rf"gpt-4o{suffix}", text))
+
+
+def _looks_like_anthropic_model_id(model: str) -> bool:
+    text = model.lower()
+    return text in {"opus", "sonnet"} or text.startswith(("claude-opus-", "claude-sonnet-", "claude-haiku-"))
+
+
 def _model_sort_key(provider: str, model: str) -> tuple[Any, ...]:
+    if provider == "openai":
+        text = model.lower()
+        version = _openai_numeric_version(text)
+        pro_rank = 0 if "pro" in text else 1
+        codex_rank = 0 if "codex" in text else 1
+        return (-version[0], -version[1], -version[2], pro_rank, codex_rank, text)
+    if provider == "anthropic":
+        text = model.lower()
+        class_rank = 0 if "opus" in text else 1 if "sonnet" in text else 2
+        alias_rank = 0 if text in {"opus", "sonnet"} else 1
+        return (class_rank, alias_rank, text)
     if provider != "gemini":
         return (model,)
     text = model.lower()
@@ -96,3 +164,10 @@ def _numeric_version(model: str) -> tuple[int, int]:
     if not match:
         return (0, 0)
     return (int(match.group(1)), int(match.group(2) or 0))
+
+
+def _openai_numeric_version(model: str) -> tuple[int, int, int]:
+    match = re.search(r"gpt-(\d+)(?:\.(\d+))?(?:\.(\d+))?", model)
+    if not match:
+        return (0, 0, 0)
+    return (int(match.group(1)), int(match.group(2) or 0), int(match.group(3) or 0))

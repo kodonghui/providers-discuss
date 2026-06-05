@@ -10,7 +10,7 @@ from typing import Any, TextIO
 
 HOOK_EVENTS = {"UserPromptSubmit", "TaskCreated", "TeammateIdle", "TaskCompleted"}
 DEFAULT_TRIGGER_REGEX = r"(?i)(kdh|providers-discuss|wiki|architecture|strategy|debate|review|trade-?off|설계|아키텍처|전략|논의|토론|검토)"
-DEFAULT_ROLES = ("source-reader", "skeptic", "recorder")
+DEFAULT_ROLES = ("Ideation Catalyst", "Research Synthesizer", "System Architect", "QA Verifier")
 STATUS_SCHEMA = "kdh.providers-discuss.claude-team-agents-status.v1"
 
 
@@ -181,7 +181,7 @@ def _handle_user_prompt_submit(
     answer_rel = f"answers/round-{round_id}/{seat_id}.md"
     status_rel = f"logs/round-{round_id}/{seat_id}.status.json"
     proof_rel = f"logs/round-{round_id}/{seat_id}.proof.json"
-    bullets = [f"logs/round-{round_id}/{role}.bullet.txt" for role in roles]
+    bullets = [_role_bullet_rel(round_id=round_id, role=role) for role in roles]
     context = _additional_context(
         run_id=run_id,
         round_id=round_id,
@@ -214,7 +214,19 @@ def _is_team_agent_teammate_prompt(prompt: str, roles: tuple[str, ...]) -> bool:
     if stripped.startswith("<teammate-message"):
         return True
     lowered = prompt.lower()
-    return any(f"you are the `{role.lower()}` teammate in team" in lowered for role in roles)
+    return any(
+        f"you are the `{role.lower()}` teammate in team" in lowered
+        or f"you are the `{_role_artifact_label(role)}` teammate in team" in lowered
+        for role in roles
+    )
+
+
+def _role_artifact_label(role: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_-]+", "-", role.strip().lower()).strip("-") or "role"
+
+
+def _role_bullet_rel(*, round_id: str, role: str) -> str:
+    return f"logs/round-{round_id}/{_role_artifact_label(role)}.bullet.txt"
 
 
 def _additional_context(
@@ -282,9 +294,11 @@ def _handle_teammate_idle(
     roles: tuple[str, ...],
 ) -> int:
     teammate = str(payload.get("teammate_name") or payload.get("teammate") or "").strip()
-    if teammate not in roles:
+    role_by_label = {_role_artifact_label(role): role for role in roles}
+    role = teammate if teammate in roles else role_by_label.get(_role_artifact_label(teammate))
+    if role is None:
         return 0
-    bullet = base / "logs" / f"round-{round_id}" / f"{teammate}.bullet.txt"
+    bullet = base / _role_bullet_rel(round_id=round_id, role=role)
     if bullet.exists() and bullet.stat().st_size > 0:
         return 0
     print(f"TeammateIdle blocked: write required bullet artifact before idling: {bullet}", file=stderr)
@@ -302,7 +316,7 @@ def _handle_task_completed(
     required = [
         base / "answers" / f"round-{round_id}" / f"{seat_id}.md",
         base / "logs" / f"round-{round_id}" / f"{seat_id}.status.json",
-        *(base / "logs" / f"round-{round_id}" / f"{role}.bullet.txt" for role in roles),
+        *(base / _role_bullet_rel(round_id=round_id, role=role) for role in roles),
     ]
     missing = [path for path in required if not path.exists() or path.stat().st_size == 0]
     if not missing:

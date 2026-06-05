@@ -267,7 +267,7 @@ def render_agent_profile_contract(profile: dict[str, Any], *, assigned_to: str =
 
 
 def team_role_specs(team_agents: dict[str, Any]) -> list[dict[str, Any]]:
-    roles = team_agents.get("roles") or team_agents.get("required_teammates") or ["source-reader", "skeptic", "recorder"]
+    roles = team_agents.get("roles") or team_agents.get("required_teammates") or ["Ideation Catalyst", "Research Synthesizer", "System Architect", "QA Verifier"]
     specs: list[dict[str, Any]] = []
     for role in roles:
         if isinstance(role, dict):
@@ -279,7 +279,7 @@ def team_role_specs(team_agents: dict[str, Any]) -> list[dict[str, Any]]:
         if not name:
             continue
         specs.append({"name": name, "artifact_label": safe_artifact_label(name), "agent_profile": profile})
-    return specs or [{"name": "source-reader", "artifact_label": "source-reader", "agent_profile": None}]
+    return specs or [{"name": "Ideation Catalyst", "artifact_label": "ideation-catalyst", "agent_profile": None}]
 
 
 def safe_artifact_label(value: str) -> str:

@@ -8,7 +8,7 @@ import string
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 try:
     import fcntl
@@ -28,6 +28,12 @@ HARNESS_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_ROOT = HARNESS_ROOT / ".kdh" / "kdh-providers-discuss"
 DEFAULT_PROVIDER_TIMEOUT_SECONDS = 2400
 DEFAULT_TEAM_AGENTS_DIRECT_MESSAGE_COUNT = 6
+DEFAULT_OPENAI_CODEX_MODEL: Final = "gpt-5.5"
+DEFAULT_OPENAI_MODEL_SELECTION: Final = "latest_available_via_official_docs_or_cli_discovery"
+DEFAULT_OPENAI_REASONING_EFFORT: Final = "xhigh"
+DEFAULT_CLAUDE_CODE_MODEL: Final = "opus"
+DEFAULT_CLAUDE_MODEL_SELECTION: Final = "claude_code_latest_opus_alias"
+DEFAULT_CLAUDE_REASONING_EFFORT: Final = "max"
 
 ALLOWED_STATES = {
     "created",
@@ -74,6 +80,18 @@ ALLOWED_GATE_VERDICTS = {
 }
 
 ROUND_PLANS: dict[str, tuple[dict[str, str], ...]] = {
+    "two-seat-3r": (
+        {"round_id": "R1", "mode": "explore", "title": "Independent ideas and risk candidates"},
+        {"round_id": "R2", "mode": "challenge", "title": "Challenge weak claims and missing evidence"},
+        {"round_id": "R3", "mode": "decide", "title": "Accepted, rejected, deferred contract"},
+    ),
+    "two-seat-5r": (
+        {"round_id": "R1", "mode": "explore", "title": "Source alignment and idea extraction"},
+        {"round_id": "R2", "mode": "challenge", "title": "Overreach, hidden runtime, framework challenge"},
+        {"round_id": "R3", "mode": "synthesize", "title": "Transport, artifact, schema candidates"},
+        {"round_id": "R4", "mode": "verify", "title": "Failure simulation and recovery requirements"},
+        {"round_id": "R5", "mode": "decide", "title": "Terminal decision and implementation gate"},
+    ),
     "trio-3r": (
         {"round_id": "R1", "mode": "explore", "title": "Independent ideas and risk candidates"},
         {"round_id": "R2", "mode": "challenge", "title": "Challenge weak claims and missing evidence"},
@@ -148,17 +166,23 @@ def ensure_run_dirs(base: Path) -> None:
 
 
 def provider_seats_for_preset(preset: str) -> dict[str, Any]:
-    if preset == "duo-team-5r":
+    if preset in {"duo-team-5r", "two-seat-3r", "two-seat-5r"}:
         seats = [
             {
                 "seat_id": "gpt",
                 "provider": "openai",
                 "transport": "codex_exec_file",
-                "role": "skeptic, verifier, overengineering check",
+                "model": DEFAULT_OPENAI_CODEX_MODEL,
+                "model_selection": DEFAULT_OPENAI_MODEL_SELECTION,
+                "reasoning_effort": DEFAULT_OPENAI_REASONING_EFFORT,
+                "role": "ideation, contradiction search, verifier, overengineering check",
                 "required": True,
                 "timeout_seconds": DEFAULT_PROVIDER_TIMEOUT_SECONDS,
                 "execution": {
                     "sandbox": "workspace-write",
+                    "model": DEFAULT_OPENAI_CODEX_MODEL,
+                    "model_selection": DEFAULT_OPENAI_MODEL_SELECTION,
+                    "effort": DEFAULT_OPENAI_REASONING_EFFORT,
                     "answer_path_required": True,
                     "stdout_capture_fallback": True,
                     "completion_marker": "KDH_CODEX_DONE",
@@ -169,22 +193,26 @@ def provider_seats_for_preset(preset: str) -> dict[str, Any]:
                 "seat_id": "claude_team",
                 "provider": "anthropic",
                 "transport": "claude_k_team_agents",
-                "role": "team-based source reading, critique, recorder",
+                "model": DEFAULT_CLAUDE_CODE_MODEL,
+                "model_selection": DEFAULT_CLAUDE_MODEL_SELECTION,
+                "reasoning_effort": DEFAULT_CLAUDE_REASONING_EFFORT,
+                "role": "team-based ideation, source synthesis, architecture critique, QA verification",
                 "required": True,
                 "timeout_seconds": DEFAULT_PROVIDER_TIMEOUT_SECONDS,
                 "execution": {
-                    "model": "opus",
-                    "effort": "max",
+                    "model": DEFAULT_CLAUDE_CODE_MODEL,
+                    "model_selection": DEFAULT_CLAUDE_MODEL_SELECTION,
+                    "effort": DEFAULT_CLAUDE_REASONING_EFFORT,
                     "permission_mode": "auto",
                 },
                 "team_agents": {
                     "enabled": True,
-                    "required_teammates": ["source-reader", "skeptic", "recorder"],
+                    "required_teammates": ["Ideation Catalyst", "Research Synthesizer", "System Architect", "QA Verifier"],
                     "required_direct_message_count": DEFAULT_TEAM_AGENTS_DIRECT_MESSAGE_COUNT,
                 },
             },
         ]
-        topology = "duo-team"
+        topology = "two-seat-team-agents"
     elif preset == "trio-5r":
         seats = _trio_seats()
         topology = "trio"
