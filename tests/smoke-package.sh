@@ -165,12 +165,25 @@ cat > "${fake_claude}" <<'PY'
 #!/usr/bin/env python3
 import json
 import os
+import select
 import sys
 from pathlib import Path
 
 cwd = Path.cwd()
+stdin_chunks = []
+for _ in range(20):
+    readable, _, _ = select.select([sys.stdin], [], [], 0.05)
+    if not readable:
+        continue
+    data = os.read(sys.stdin.fileno(), 4096)
+    if not data:
+        break
+    stdin_chunks.append(data.decode("utf-8", errors="replace"))
+    if "Write the required artifacts before final response" in "".join(stdin_chunks):
+        break
 runtime = {
     "argv": sys.argv,
+    "stdin": "".join(stdin_chunks),
     "env": {
         "KDH_PROVIDER_DISCUSS_CLAUDE_MODEL": os.environ.get("KDH_PROVIDER_DISCUSS_CLAUDE_MODEL", ""),
         "KDH_PROVIDER_DISCUSS_CLAUDE_EFFORT": os.environ.get("KDH_PROVIDER_DISCUSS_CLAUDE_EFFORT", ""),
@@ -763,8 +776,9 @@ assert argv[argv.index("--effort") + 1] == "medium"
 assert argv[argv.index("--permission-mode") + 1] == "auto"
 argv_text = "\n".join(argv)
 assert "# KDH Claude-K Team Agents Live Smoke Contract" not in argv_text
-assert "claude_team_shape.live-team-agents-smoke.md" in argv[-1]
-assert len(argv[-1]) < 512
+assert "claude_team_shape.live-team-agents-smoke.md" not in argv_text
+assert "claude_team_shape.live-team-agents-smoke.md" in runtime["stdin"]
+assert "Read and execute the instructions in this prompt file exactly" in runtime["stdin"]
 assert runtime["env"]["KDH_PROVIDER_DISCUSS_CLAUDE_MODEL"] == "sonnet"
 assert runtime["env"]["KDH_PROVIDER_DISCUSS_CLAUDE_EFFORT"] == "medium"
 proof = json.loads((run / payload["proof_path"]).read_text(encoding="utf-8"))

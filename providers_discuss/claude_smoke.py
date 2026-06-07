@@ -298,7 +298,7 @@ def _spawn_pty(
     ]
     if not _is_relative_to(run_root.resolve(), launch_cwd.resolve()):
         command.extend(["--add-dir", str(run_root)])
-    command.append(_launcher_prompt(prompt_path=prompt_path, fallback_prompt=prompt))
+    launcher_prompt = _launcher_prompt(prompt_path=prompt_path, fallback_prompt=prompt)
     proc = subprocess.Popen(
         command,
         cwd=str(launch_cwd),
@@ -311,6 +311,11 @@ def _spawn_pty(
     os.close(slave_fd)
 
     chunks: list[str] = []
+    try:
+        os.write(master_fd, f"{launcher_prompt}\r".encode("utf-8"))
+        chunks.append("\n[KDH_PTY_ACTION prompt-submitted]\n")
+    except OSError:
+        chunks.append("\n[KDH_PTY_ACTION prompt-submit-failed]\n")
     timed_out = False
     killed_before_completion = False
     cleanup_after_completion = False
