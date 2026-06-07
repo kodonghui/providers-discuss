@@ -172,7 +172,7 @@ from pathlib import Path
 cwd = Path.cwd()
 print("Fake Claude ready", flush=True)
 stdin_chunks = []
-for _ in range(20):
+for _ in range(80):
     readable, _, _ = select.select([sys.stdin], [], [], 0.05)
     if not readable:
         continue

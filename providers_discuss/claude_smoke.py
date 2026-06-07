@@ -27,6 +27,8 @@ COMPLETION_MARKER = "KDH_CLAUDE_DONE"
 DEFAULT_CLAUDE_MODEL = "opus"
 DEFAULT_CLAUDE_EFFORT = "max"
 DEFAULT_CLAUDE_PERMISSION_MODE = "auto"
+BRACKETED_PASTE_BEGIN = "\x1b[200~"
+BRACKETED_PASTE_END = "\x1b[201~"
 STATUS_SCHEMA = "kdh.providers-discuss.claude-k-status.v1"
 
 
@@ -311,16 +313,20 @@ def _spawn_pty(
     os.close(slave_fd)
 
     chunks: list[str] = []
-    prompt_submitted = False
+    prompt_pasted = False
+    prompt_enter_sent = False
+    has_seen_output = False
+    last_prompt_action_at = time.monotonic()
 
-    def submit_prompt() -> None:
-        nonlocal prompt_submitted
-        if prompt_submitted:
+    def paste_prompt() -> None:
+        nonlocal prompt_pasted, last_prompt_action_at
+        if prompt_pasted:
             return
-        prompt_submitted = True
+        prompt_pasted = True
+        last_prompt_action_at = time.monotonic()
         try:
-            os.write(master_fd, f"{launcher_prompt}\r".encode("utf-8"))
-            chunks.append("\n[KDH_PTY_ACTION prompt-submitted]\n")
+            os.write(master_fd, f"{BRACKETED_PASTE_BEGIN}{launcher_prompt}{BRACKETED_PASTE_END}".encode("utf-8"))
+            chunks.append("\n[KDH_PTY_ACTION bracketed-paste]\n")
         except OSError:
             chunks.append("\n[KDH_PTY_ACTION prompt-submit-failed]\n")
 
@@ -379,6 +385,7 @@ def _spawn_pty(
                             try:
                                 os.write(master_fd, b"1\r")
                                 trust_accepted = True
+                                last_prompt_action_at = time.monotonic()
                                 chunks.append("\n[KDH_PTY_ACTION workspace-trust-1-enter]\n")
                                 blocked_reason = ""
                                 continue
@@ -402,8 +409,26 @@ def _spawn_pty(
                                 cleanup_after_completion = True
                                 _terminate_process(proc)
                                 break
-                    if not prompt_submitted and not completion_seen and proc.poll() is None:
-                        submit_prompt()
+                    has_seen_output = True
+
+            now = time.monotonic()
+            if (
+                not prompt_pasted
+                and not completion_seen
+                and proc.poll() is None
+                and (has_seen_output or now > deadline - timeout_seconds + 6)
+                and now - last_prompt_action_at > 0.7
+            ):
+                paste_prompt()
+                continue
+            if prompt_pasted and not prompt_enter_sent and not completion_seen and proc.poll() is None and now - last_prompt_action_at > 0.8:
+                try:
+                    os.write(master_fd, b"\r")
+                    prompt_enter_sent = True
+                    chunks.append("\n[KDH_PTY_ACTION submit-enter]\n")
+                except OSError:
+                    chunks.append("\n[KDH_PTY_ACTION submit-enter-failed]\n")
+                continue
 
             if proc.poll() is not None:
                 break
