@@ -44,6 +44,8 @@ def run_claude_team_agents_smoke(
     provider_result_artifacts: bool = False,
 ) -> dict[str, Any]:
     runtime = build_claude_runtime(seat, timeout_seconds=timeout_seconds, timeout_override_reason=timeout_override_reason)
+    if not provider_result_artifacts:
+        _bound_smoke_runtime(runtime)
     effective_timeout = int(runtime["timeout_seconds"]["effective"])
     if not claude_bin.exists():
         raise ValueError(f"claude bin missing: {claude_bin}")
@@ -299,6 +301,17 @@ def _proof_verify_path(proof_path: Path) -> Path:
     if proof_path.name.endswith(".proof.json"):
         return proof_path.with_name(proof_path.name[: -len(".proof.json")] + ".proof.verify.json")
     return proof_path.with_name(f"{proof_path.name}.verify.json")
+
+
+def _bound_smoke_runtime(runtime: dict[str, Any]) -> None:
+    effort = runtime.get("effort")
+    if not isinstance(effort, dict):
+        return
+    if effort.get("effective") == "medium":
+        return
+    effort["effective"] = "medium"
+    effort["overridden"] = True
+    effort["override_reason"] = "proof-only Team Agents smoke uses bounded reasoning effort"
 
 
 def _write_provider_status_fields(
