@@ -311,11 +311,19 @@ def _spawn_pty(
     os.close(slave_fd)
 
     chunks: list[str] = []
-    try:
-        os.write(master_fd, f"{launcher_prompt}\r".encode("utf-8"))
-        chunks.append("\n[KDH_PTY_ACTION prompt-submitted]\n")
-    except OSError:
-        chunks.append("\n[KDH_PTY_ACTION prompt-submit-failed]\n")
+    prompt_submitted = False
+
+    def submit_prompt() -> None:
+        nonlocal prompt_submitted
+        if prompt_submitted:
+            return
+        prompt_submitted = True
+        try:
+            os.write(master_fd, f"{launcher_prompt}\r".encode("utf-8"))
+            chunks.append("\n[KDH_PTY_ACTION prompt-submitted]\n")
+        except OSError:
+            chunks.append("\n[KDH_PTY_ACTION prompt-submit-failed]\n")
+
     timed_out = False
     killed_before_completion = False
     cleanup_after_completion = False
@@ -365,7 +373,8 @@ def _spawn_pty(
                     chunk = data.decode("utf-8", errors="replace")
                     chunks.append(chunk)
                     if not completion_seen:
-                        blocked_reason = _detect_blocking_prompt("".join(chunks))
+                        detect_text = chunk if trust_accepted else "".join(chunks)
+                        blocked_reason = _detect_blocking_prompt(detect_text)
                         if blocked_reason == "workspace_trust_prompt" and auto_trust and not trust_accepted:
                             try:
                                 os.write(master_fd, b"1\r")
@@ -393,6 +402,8 @@ def _spawn_pty(
                                 cleanup_after_completion = True
                                 _terminate_process(proc)
                                 break
+                    if not prompt_submitted and not completion_seen and proc.poll() is None:
+                        submit_prompt()
 
             if proc.poll() is not None:
                 break
