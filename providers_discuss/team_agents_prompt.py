@@ -29,6 +29,12 @@ def team_agents_prompt(
     teammate_list = format_teammate_list(teammates)
     run_context = run_context_section(round_id=round_id, run_root=run_root, include_provider_result=include_provider_result)
     answer_contract = answer_contract_section(include_provider_result=include_provider_result)
+    execution_guard = execution_guard_section(
+        include_provider_result=include_provider_result,
+        round_id=round_id,
+        answer_abs=answer_abs,
+        status_abs=status_abs,
+    )
     return f"""# KDH Claude-K Team Agents Live Smoke Contract
 
 This is a bounded Team Agents PoC inside a live Claude Code PTY session.
@@ -47,7 +53,12 @@ Run details:
 
 {run_context}
 
+{execution_guard}
+
 Required live actions:
+0. If `TeamCreate`, `TaskCreate`, team-scoped `Agent`, or `SendMessage` are
+   deferred tools, call `ToolSearch` once to load them, then continue directly
+   to the tool calls below.
 1. Use `TeamCreate` to create the named team above.
 2. Use `TaskCreate` to create one teammate task for each required teammate above:
    {teammate_list}.
@@ -157,6 +168,20 @@ def answer_contract_section(*, include_provider_result: bool) -> str:
     else:
         lines.append("- no curriculum, provider conclusion, claim map, or source synthesis;")
     return "\n".join(lines)
+
+
+def execution_guard_section(*, include_provider_result: bool, round_id: str, answer_abs: Path, status_abs: Path) -> str:
+    if include_provider_result:
+        return ""
+    return f"""Smoke execution guard:
+- This is a retry-safe proof check. Existing `logs/round-{round_id}/`,
+  prior proof/status/transcript files, and prior answer files may be stale.
+- Do not read or analyze old proof/status/transcript artifacts for this smoke.
+- Do not inspect input packs, config, prior answers, or logs; this smoke only
+  proves tool availability and artifact writing.
+- Execute the Team Agents tool calls before writing analysis or explanations.
+- After tool calls, write only `{answer_abs}` and `{status_abs}`, then print
+  the completion marker."""
 
 
 def format_teammate_list(teammates: Sequence[str]) -> str:

@@ -84,6 +84,11 @@ def run_claude_team_agents_smoke(
         path.parent.mkdir(parents=True, exist_ok=True)
     session_jsonl_dir.mkdir(parents=True, exist_ok=True)
     team_state_dir.mkdir(parents=True, exist_ok=True)
+    if not provider_result_artifacts:
+        _clear_stale_smoke_artifacts(
+            paths=[answer_path, transcript_path, status_path, proof_path, _proof_verify_path(proof_path)],
+            dirs=[session_jsonl_dir, team_state_dir],
+        )
 
     prompt = team_agents_prompt(
         run=run,
@@ -276,6 +281,24 @@ def run_claude_team_agents_smoke(
         "checks": result["checks"],
         "blockers": result["blockers"],
     }
+
+
+def _clear_stale_smoke_artifacts(*, paths: list[Path], dirs: list[Path]) -> None:
+    for path in paths:
+        try:
+            if path.is_file() or path.is_symlink():
+                path.unlink()
+        except OSError:
+            pass
+    for directory in dirs:
+        shutil.rmtree(directory, ignore_errors=True)
+        directory.mkdir(parents=True, exist_ok=True)
+
+
+def _proof_verify_path(proof_path: Path) -> Path:
+    if proof_path.name.endswith(".proof.json"):
+        return proof_path.with_name(proof_path.name[: -len(".proof.json")] + ".proof.verify.json")
+    return proof_path.with_name(f"{proof_path.name}.verify.json")
 
 
 def _write_provider_status_fields(
