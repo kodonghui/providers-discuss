@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import codecs
 import os
 import shutil
 from pathlib import Path
@@ -22,11 +23,13 @@ SKIP_DIR_NAMES = {
     ".git",
     ".kdh",
     ".mypy_cache",
+    ".omo",
     ".pytest_cache",
     ".ruff_cache",
     ".venv",
     "__pycache__",
     "_bmad-output",
+    "input-pack",
     "node_modules",
     "venv",
 }
@@ -388,8 +391,9 @@ def _read_prefix(path: Path) -> bytes:
 def _looks_binary(data: bytes) -> bool:
     if b"\x00" in data:
         return True
+    decoder = codecs.getincrementaldecoder("utf-8")()
     try:
-        data.decode("utf-8")
+        decoder.decode(data, final=False)
     except UnicodeDecodeError:
         return True
     return False
