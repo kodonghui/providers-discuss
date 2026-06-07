@@ -127,6 +127,7 @@ def run_claude_team_agents_smoke(
             run_root=base.resolve(),
             launch_cwd=launch_cwd,
             prompt=prompt,
+            prompt_path=prompt_path,
             answer_path=answer_path.resolve(),
             status_path=status_path.resolve(),
             auto_trust=auto_trust,

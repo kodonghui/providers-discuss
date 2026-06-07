@@ -95,6 +95,7 @@ def run_claude_k_smoke(
         run_root=base,
         launch_cwd=launch_cwd,
         prompt=prompt,
+        prompt_path=prompt_path,
         answer_path=answer_path,
         status_path=status_path,
         auto_trust=auto_trust,
@@ -263,6 +264,7 @@ def _spawn_pty(
     run_root: Path,
     launch_cwd: Path,
     prompt: str,
+    prompt_path: Path | None,
     answer_path: Path,
     status_path: Path,
     auto_trust: bool,
@@ -296,7 +298,7 @@ def _spawn_pty(
     ]
     if not _is_relative_to(run_root.resolve(), launch_cwd.resolve()):
         command.extend(["--add-dir", str(run_root)])
-    command.append(prompt)
+    command.append(_launcher_prompt(prompt_path=prompt_path, fallback_prompt=prompt))
     proc = subprocess.Popen(
         command,
         cwd=str(launch_cwd),
@@ -401,6 +403,15 @@ def _spawn_pty(
         _terminate_process(proc)
         exit_code = proc.poll()
     return "".join(chunks), exit_code, timed_out, killed_before_completion, cleanup_after_completion, blocked_reason, trust_accepted
+
+
+def _launcher_prompt(*, prompt_path: Path | None, fallback_prompt: str) -> str:
+    if prompt_path is None:
+        return fallback_prompt
+    return (
+        "Read and execute the instructions in this prompt file exactly: "
+        f"{prompt_path.resolve()}. Write the required artifacts before final response."
+    )
 
 
 def _artifact_completion_seen(*, answer_path: Path) -> bool:

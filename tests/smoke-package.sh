@@ -761,6 +761,10 @@ argv = runtime["argv"]
 assert argv[argv.index("--model") + 1] == "sonnet"
 assert argv[argv.index("--effort") + 1] == "medium"
 assert argv[argv.index("--permission-mode") + 1] == "auto"
+argv_text = "\n".join(argv)
+assert "# KDH Claude-K Team Agents Live Smoke Contract" not in argv_text
+assert "claude_team_shape.live-team-agents-smoke.md" in argv[-1]
+assert len(argv[-1]) < 512
 assert runtime["env"]["KDH_PROVIDER_DISCUSS_CLAUDE_MODEL"] == "sonnet"
 assert runtime["env"]["KDH_PROVIDER_DISCUSS_CLAUDE_EFFORT"] == "medium"
 proof = json.loads((run / payload["proof_path"]).read_text(encoding="utf-8"))
