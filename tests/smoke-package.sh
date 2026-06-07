@@ -776,6 +776,8 @@ assert proof["required_teammates"] == ["Ideation Catalyst", "readme-writer", "ma
 prompt = (run / "prompts" / "round-R1" / "claude_team_shape.live-team-agents-smoke.md").read_text(encoding="utf-8")
 assert "Ideation Catalyst, readme-writer, maturity-auditor, and boundary-reviewer" in prompt
 assert "source-reader, skeptic, and recorder" not in prompt
+assert "substantive provider result" not in prompt
+assert "substantive answer section" not in prompt
 assert '"task_create_count": 4' in prompt
 assert '"agent_calls_with_team_name": 4' in prompt
 PY
